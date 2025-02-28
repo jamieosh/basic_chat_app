@@ -1,8 +1,8 @@
-<div class="chat-container flex flex-col flex-grow mobile-chat-height">
-    <!-- Messages area -->
-    <div id="chat-box" class="flex-1 p-3 sm:p-4 overflow-y-auto space-y-3 sm:space-y-4">
+<div class="chat-container flex flex-col h-full">
+    <!-- Messages area - scrollable -->
+    <div id="chat-box" class="flex-1 overflow-y-auto space-y-3 sm:space-y-4 p-3 sm:p-4">
         <!-- Welcome message -->
-        <div class="message bot-message bg-gray-100 p-3 rounded-lg max-w-[80%] fade-in">
+        <div class="message bot-message bg-gray-100 p-3 max-w-[80%] fade-in">
             <div class="message-content">
                 <p>Hello! How can I help you today?</p>
                 <div class="message-timestamp" id="welcome-timestamp"></div>
@@ -10,20 +10,21 @@
         </div>
     </div>
     
-    <!-- Input area -->
-    <div class="border-t p-2 sm:p-4 bg-gray-50">
+    <!-- Input area - fixed at bottom -->
+    <div class="border-t bg-gray-50">
         <form id="chat-form" hx-post="/send-message-htmx" 
               hx-target="#chat-box" 
               hx-swap="beforeend"
-              class="flex items-center gap-2">
-            <input type="text" 
+              class="flex items-end gap-2 p-2 sm:p-4">
+            <textarea 
                    id="message-input" 
                    name="message" 
                    placeholder="Type your message..." 
                    required
-                   class="flex-1 p-2 sm:p-3 border rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm sm:text-base">
+                   rows="1"
+                   class="flex-1 p-2 sm:p-3 border focus:outline-none focus:ring-1 focus:ring-gray-400 text-sm sm:text-base resize-none overflow-y-auto max-h-[240px]"></textarea>
             <button type="submit" 
-                    class="bg-primary-600 text-white px-3 sm:px-4 py-2 rounded-full hover:bg-primary-700 transition-colors flex-shrink-0 text-sm sm:text-base">
+                    class="bg-gray-600 text-white px-3 sm:px-4 py-2 hover:bg-gray-700 transition-colors flex-shrink-0 text-sm sm:text-base">
                 <span class="hidden sm:inline">Send</span>
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:hidden" viewBox="0 0 20 20" fill="currentColor">
                     <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />

@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import openai
 from agents.openai_agent import OpenAIAgent
 from utils.logging_config import get_logger, truncate_message
+from utils.html_formatter import format_response_as_html
 
 # Load environment variables
 load_dotenv()
@@ -46,7 +47,8 @@ async def home(request: Request):
     logger.info("Rendering home page")
     return templates.TemplateResponse("index.html", {
         "request": request,
-        "agent_display_name": agent.display_name
+        "model_display_name": agent.model_display_name,
+        "display_name": agent.display_name
     })
 
 @app.post("/send-message-htmx", response_class=HTMLResponse)
@@ -70,8 +72,8 @@ async def chat_htmx(request: Request, message: str = Form(...)):
         # Process message with OpenAI agent
         response = agent.process_message(message)
         
-        # Format response as HTML using the agent's method
-        formatted_content = await agent.format_response_as_html(response)
+        # Format response as HTML using the formatter utility
+        formatted_content = await format_response_as_html(response)
         
         # Add timestamp and wrap in message container
         html_response = f"""

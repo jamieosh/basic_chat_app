@@ -6,15 +6,16 @@ class BaseAgent(ABC):
     @property
     @abstractmethod
     def display_name(self):
-        """Return a user-friendly display name for the agent"""
+        """Return the display name for the agent to be shown in the header"""
+        pass
+    
+    @property
+    @abstractmethod
+    def model_display_name(self):
+        """Return a user-friendly display name for the model"""
         pass
     
     @abstractmethod
     def process_message(self, message: str) -> str:
         """Process a user message and return a response"""
-        pass
-    
-    @abstractmethod
-    async def format_response_as_html(self, response: str) -> str:
-        """Format the response as HTML with code block handling"""
         pass

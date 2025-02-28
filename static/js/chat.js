@@ -16,11 +16,62 @@ class ChatUI {
             welcomeTimestamp.textContent = this.getFormattedTime();
         }
         
+        // Initialize textarea auto-resize
+        this.initTextarea();
+        
         // Add event listeners
         this.addEventListeners();
         
         // Initial scroll to bottom
         this.scrollToBottom();
+    }
+    
+    initTextarea() {
+        const textarea = document.getElementById(this.messageInputId);
+        if (!textarea) return;
+
+        // Set initial height
+        this.adjustTextareaHeight(textarea);
+
+        // Add input event listener for auto-resize
+        textarea.addEventListener('input', () => {
+            this.adjustTextareaHeight(textarea);
+        });
+
+        // Handle Enter key (Shift+Enter for new line)
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                const form = document.getElementById(this.formId);
+                if (form && textarea.value.trim()) {
+                    form.dispatchEvent(new Event('submit'));
+                }
+            }
+        });
+    }
+    
+    adjustTextareaHeight(textarea) {
+        // Reset height to auto to get the correct scrollHeight
+        textarea.style.height = 'auto';
+        
+        // Calculate if content exceeds max height
+        const maxHeight = 240;
+        const shouldScroll = textarea.scrollHeight > maxHeight;
+        
+        // Set new height based on scrollHeight, with a maximum
+        textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
+        
+        // Add or remove scrolling class based on content height
+        textarea.classList.toggle('scrolling', shouldScroll);
+    }
+    
+    resetTextarea() {
+        const textarea = document.getElementById(this.messageInputId);
+        if (textarea) {
+            textarea.value = '';
+            textarea.style.height = 'auto';
+            this.adjustTextareaHeight(textarea);
+        }
     }
     
     getFormattedTime() {
@@ -39,7 +90,10 @@ class ChatUI {
     scrollToBottom() {
         const chatBox = document.getElementById(this.chatBoxId);
         if (chatBox) {
-            chatBox.scrollTop = chatBox.scrollHeight;
+            // Use a small timeout to ensure the DOM has updated
+            setTimeout(() => {
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }, 100);
         }
     }
     
@@ -148,15 +202,7 @@ class ChatUI {
     }
     
     handleAfterRequest() {
-        const messageInput = document.getElementById(this.messageInputId);
-        if (messageInput) {
-            messageInput.value = '';
-            messageInput.focus();
-        }
-        
-        // Remove timestamp inputs
-        const timeInputs = document.querySelectorAll('input[name="timestamp"]');
-        timeInputs.forEach(input => input.remove());
+        this.resetTextarea();
     }
 }
 

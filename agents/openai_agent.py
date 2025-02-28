@@ -13,7 +13,6 @@ class OpenAIAgent(BaseAgent):
         Args:
             api_key: OpenAI API key
             model: OpenAI model to use
-            prompt_name: Name of the prompt to use (default: "general")
             
         Raises:
             FileNotFoundError: If the specified prompt templates don't exist
@@ -54,7 +53,12 @@ class OpenAIAgent(BaseAgent):
     
     @property
     def display_name(self):
-        """Return a user-friendly display name for the agent based on the model"""
+        """Return the display name for the agent to be shown in the header"""
+        return "Chat Bot"
+    
+    @property
+    def model_display_name(self):
+        """Return a user-friendly display name for the model based on the model"""
         model_display_names = {
             "gpt-3.5-turbo": "GPT-3.5",
             "gpt-4": "GPT-4",
@@ -173,35 +177,4 @@ class OpenAIAgent(BaseAgent):
                 
         except FileNotFoundError as e:
             self.logger.critical("Prompt template error: %s", str(e))
-            raise
-    
-    async def format_response_as_html(self, response: str) -> str:
-        """Format the response as HTML with code block handling"""
-        # Escape HTML in the response to prevent XSS
-        safe_response = html.escape(response)
-        
-        # Format the response with line breaks
-        formatted_response = safe_response.replace('\n', '<br>')
-        
-        # Process code blocks if present (simple markdown-like formatting)
-        if '```' in formatted_response:
-            # Replace code blocks with styled pre elements
-            parts = formatted_response.split('```')
-            formatted_parts = []
-            
-            for i, part in enumerate(parts):
-                if i % 2 == 0:  # Regular text
-                    formatted_parts.append(part)
-                else:  # Code block
-                    # Check if the code block has a language specified
-                    lines = part.split('<br>', 1)
-                    if len(lines) > 1:
-                        language = lines[0].strip()
-                        code = lines[1]
-                        formatted_parts.append(f'<pre class="bg-gray-800 text-gray-100 p-2 rounded-md overflow-x-auto text-sm my-2"><code class="language-{language}">{code}</code></pre>')
-                    else:
-                        formatted_parts.append(f'<pre class="bg-gray-800 text-gray-100 p-2 rounded-md overflow-x-auto text-sm my-2"><code>{part}</code></pre>')
-            
-            formatted_response = ''.join(formatted_parts)
-            
-        return formatted_response 
+            raise 
