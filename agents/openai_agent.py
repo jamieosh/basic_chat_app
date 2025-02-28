@@ -53,12 +53,12 @@ class OpenAIAgent(BaseAgent):
     
     @property
     def display_name(self):
-        """Return the display name for the agent to be shown in the header"""
-        return "Chat Bot"
+        """Return the user-friendly display name for the agent"""
+        return "PodcastBot"
     
     @property
     def model_display_name(self):
-        """Return a user-friendly display name for the model based on the model"""
+        """Return a user-friendly display name for the model"""
         model_display_names = {
             "gpt-3.5-turbo": "GPT-3.5",
             "gpt-4": "GPT-4",
