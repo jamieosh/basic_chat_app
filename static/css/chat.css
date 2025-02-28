@@ -1,0 +1,98 @@
+/* Custom styles for mobile optimization */
+@media (max-width: 640px) {
+    .mobile-full-height {
+        height: calc(100vh - 2rem) !important;
+    }
+    .mobile-chat-height {
+        height: calc(100vh - 8rem) !important;
+    }
+}
+
+/* Ensure smooth scrolling */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Fix iOS input zoom */
+@media screen and (max-width: 768px) {
+    input, select, textarea {
+        font-size: 16px;
+    }
+}
+
+/* Animation for new messages */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* Typing indicator animation */
+.typing-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #9ca3af;
+    margin-right: 3px;
+    animation: typingAnimation 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(1) { animation-delay: 0s; }
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingAnimation {
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-5px); }
+}
+
+/* Message containers */
+.message {
+    margin-bottom: 1rem;
+}
+
+.bot-message {
+    align-self: flex-start;
+    background-color: #f3f4f6;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    max-width: 80%;
+}
+
+.user-message {
+    align-self: flex-end;
+    background-color: #dbeafe;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    max-width: 80%;
+    margin-left: auto;
+}
+
+.error-message {
+    background-color: #fee2e2;
+}
+
+/* Message content */
+.message-content {
+    word-break: break-word;
+}
+
+/* Timestamp base styles */
+.message-timestamp {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: 0.25rem;
+}
+
+/* User message timestamp - right justified */
+.user-message .message-timestamp {
+    text-align: right;
+}
+
+/* Bot message timestamp - left justified */
+.bot-message .message-timestamp {
+    text-align: left;
+} 

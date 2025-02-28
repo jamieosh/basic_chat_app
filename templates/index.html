@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat</title>
+    <script src="https://unpkg.com/htmx.org@1.9.5"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="/static/css/chat.css">
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+    <!-- Main container with responsive padding -->
+    <div class="container mx-auto max-w-3xl p-2 sm:p-4 flex-grow flex flex-col">
+        <!-- Chat card that fills available height on mobile -->
+        <div class="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col mobile-full-height h-full">
+            <!-- Header -->
+            <div class="bg-primary-600 text-white p-3 sm:p-4 flex items-center justify-between">
+                <h1 class="text-lg sm:text-xl font-bold">Chat with AI Assistant</h1>
+                <span class="text-xs sm:text-sm bg-primary-700 px-2 py-1 rounded-full">{{ agent_display_name }}</span>
+            </div>
+            
+            <!-- Include the chat component -->
+            {% include "components/chat.html" %}
+        </div>
+        
+        <!-- Attribution removed -->
+    </div>
+
+    <script src="/static/js/chat.js"></script>
+</body>
+</html>
