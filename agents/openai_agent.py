@@ -7,7 +7,7 @@ from utils.prompt_manager import PromptTemplateManager
 class OpenAIAgent(BaseAgent):
     """Agent that uses OpenAI's API to process messages"""
     
-    def __init__(self, api_key, model="gpt-3.5-turbo"):
+    def __init__(self, api_key, model="gpt-4o-mini"):
         """Initialize the OpenAI agent
         
         Args:
@@ -63,7 +63,8 @@ class OpenAIAgent(BaseAgent):
             "gpt-3.5-turbo": "GPT-3.5",
             "gpt-4": "GPT-4",
             "gpt-4-turbo": "GPT-4 Turbo",
-            "gpt-4o": "GPT-4o"
+            "gpt-4o": "GPT-4o",
+            "gpt-4o-mini": "GPT-4o Mini"
         }
         
         # Return the display name if it exists, otherwise return the model name
