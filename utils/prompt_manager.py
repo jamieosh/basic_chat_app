@@ -10,27 +10,25 @@ class PromptTemplateManager:
         self.agent_name = agent_name
         self.logger = get_logger("prompt_manager")
         
-        # Create templates directory if it doesn't exist
-        os.makedirs(templates_dir, exist_ok=True)
-        
-        # Check if the required directories for this agent type exist
-        agent_dir = os.path.join(templates_dir, agent_name)
-        system_dir = os.path.join(agent_dir, "system")
-        context_dir = os.path.join(agent_dir, "context")
-        
-        if not os.path.exists(agent_dir):
-            error_msg = f"Templates directory for agent type '{agent_name}' does not exist: {agent_dir}"
+        # Check if the templates directory exists
+        if not os.path.exists(templates_dir):
+            error_msg = f"Templates directory does not exist: {templates_dir}"
             self.logger.critical(error_msg)
             raise FileNotFoundError(error_msg)
-            
-        for prompt_dir in [system_dir, context_dir]:
-            if not os.path.exists(prompt_dir):
-                error_msg = f"Required prompt directory does not exist: {prompt_dir}"
-                self.logger.critical(error_msg)
-                raise FileNotFoundError(error_msg)
+        else:
+            self.logger.info("Templates directory exists: %s", templates_dir)
+        
+        # Check if the required directories for this agent type exist
+        agent_dir = os.path.join(templates_dir, agent_name)        
+        if not os.path.exists(agent_dir):
+            error_msg = f"Templates directory for agent type '{agent_name}' does not exist: {self.agent_dir}"
+            self.logger.critical(error_msg)
+            raise FileNotFoundError(error_msg)
+        else:
+            self.logger.info("Templates directory for agent type '%s' exists: %s", agent_name, agent_dir)
         
         # Initialize Jinja2 environment
-        self.env = Environment(
+        self.j2env = Environment(
             loader=FileSystemLoader(os.path.dirname(templates_dir)),
             trim_blocks=True,
             lstrip_blocks=True
@@ -39,7 +37,7 @@ class PromptTemplateManager:
         self.logger.info("PromptTemplateManager initialized for agent type '%s' with templates directory: %s", 
                          agent_name, templates_dir)
     
-    def render_template(self, template_path, **variables):
+    def _render_template(self, template_path, **variables):
         """Render a template with the given variables
         
         Args:
@@ -54,7 +52,7 @@ class PromptTemplateManager:
             Exception: For other template rendering errors
         """
         try:
-            template = self.env.get_template(template_path)
+            template = self.j2env.get_template(template_path)
             return template.render(**variables)
         except Exception as e:
             self.logger.error("Error rendering template %s: %s", template_path, str(e))
@@ -74,9 +72,9 @@ class PromptTemplateManager:
             FileNotFoundError: If the system prompt template doesn't exist
             Exception: For other template rendering errors
         """
-        template_path = f"prompts/{self.agent_name}/system/{prompt_name}.j2"
+        template_path = f"prompts/{self.agent_name}/system_{prompt_name}.j2"
         try:
-            return self.render_template(template_path, **variables)
+            return self._render_template(template_path, **variables)
         except Exception as e:
             self.logger.critical(
                 "System prompt %s not found for %s: %s",
@@ -98,9 +96,9 @@ class PromptTemplateManager:
             FileNotFoundError: If the context prompt template doesn't exist
             Exception: For other template rendering errors
         """
-        template_path = f"prompts/{self.agent_name}/context/{prompt_name}.j2"
+        template_path = f"prompts/{self.agent_name}/user_{prompt_name}.j2"
         try:
-            return self.render_template(template_path, **variables)
+            return self._render_template(template_path, **variables)
         except Exception as e:
             self.logger.critical(
                 "Context prompt %s not found for %s: %s",
