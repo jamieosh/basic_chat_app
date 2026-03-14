@@ -20,35 +20,29 @@ A modern, responsive chat application built with Python FastAPI and HTMX that pr
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd podcast_chat
+cd basic_chat_app
 ```
 
-2. Create a virtual environment and activate it:
+2. Use Python 3.13+ and sync dependencies with `uv`:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+uv sync
 ```
 
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-4. Create a `.env` file in the project root and add your OpenAI API key:
-```
+3. Create a `.env` file in the project root and add your OpenAI API key:
+```dotenv
 OPENAI_API_KEY=your_api_key_here
 ```
 
-5. Run the application:
+4. Run the application:
 ```bash
-uvicorn main:app --reload
+uv run uvicorn main:app --reload
 ```
 
-The application will be available at `http://localhost:8000`
+The application will be available at `http://localhost:8000`.
 
 ## Dependencies
 
-- Python 3.7+
+- Python 3.13+
 - FastAPI
 - HTMX
 - Tailwind CSS
@@ -59,7 +53,7 @@ The application will be available at `http://localhost:8000`
 ## Project Structure
 
 ```
-podcast_chat/
+basic_chat_app/
 ├── agents/                 # AI agent implementations
 │   ├── base_agent.py      # Abstract base agent class
 │   └── openai_agent.py    # OpenAI-specific agent implementation
@@ -74,10 +68,31 @@ podcast_chat/
 │   ├── logging_config.py
 │   └── prompt_manager.py
 ├── main.py             # FastAPI application
-└── requirements.txt    # Python dependencies
+├── pyproject.toml      # Project metadata and dependencies
+└── uv.lock             # Locked dependency versions for uv
 ```
 
 ## Development
+
+Dependency source of truth:
+- `pyproject.toml` + `uv.lock`
+- `requirements.txt` is generated (exported) for compatibility only
+
+Run tests with:
+```bash
+uv run python -m pytest
+```
+
+Run lint and type checks:
+```bash
+uv run ruff check .
+uv run mypy .
+```
+
+Install git hooks:
+```bash
+uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+```
 
 ### Adding New Features
 

@@ -1,5 +1,6 @@
-import html
 import openai
+from openai.types.chat import ChatCompletionMessageParam
+
 from .base_agent import BaseAgent
 from utils.logging_config import get_logger, truncate_message
 from utils.prompt_manager import PromptTemplateManager
@@ -111,7 +112,7 @@ class OpenAIAgent(BaseAgent):
                 user_content = message
             
             # Format messages for OpenAI API
-            messages = [
+            messages: list[ChatCompletionMessageParam] = [
                 {"role": "system", "content": system_content},
                 {"role": "user", "content": user_content}
             ]
@@ -136,46 +137,34 @@ class OpenAIAgent(BaseAgent):
                 
                 return response_text
                 
+            except openai.APITimeoutError as e:
+                self.logger.error("Timeout when calling OpenAI API: %s", str(e), exc_info=True)
+                raise
+
             except openai.APIConnectionError as e:
                 self.logger.error("Connection error when calling OpenAI API: %s", str(e), exc_info=True)
-                raise openai.APIConnectionError(
-                    f"Failed to connect to OpenAI API: {str(e)}. Please check your internet connection."
-                )
+                raise
                 
             except openai.RateLimitError as e:
                 self.logger.error("Rate limit exceeded when calling OpenAI API: %s", str(e), exc_info=True)
-                raise openai.RateLimitError(
-                    "OpenAI API rate limit exceeded. Please try again later."
-                )
+                raise
                 
             except openai.AuthenticationError as e:
                 self.logger.error("Authentication error when calling OpenAI API: %s", str(e), exc_info=True)
-                raise openai.AuthenticationError(
-                    "Invalid API key. Please check your OpenAI API key."
-                )
+                raise
+
+            except openai.BadRequestError as e:
+                self.logger.error("Bad request error when calling OpenAI API: %s", str(e), exc_info=True)
+                raise
                 
             except openai.APIError as e:
                 self.logger.error("API error when calling OpenAI API: %s", str(e), exc_info=True)
-                raise openai.APIError(
-                    f"OpenAI API returned an error: {str(e)}"
-                )
-                
-            except openai.BadRequestError as e:
-                self.logger.error("Bad request error when calling OpenAI API: %s", str(e), exc_info=True)
-                raise openai.BadRequestError(
-                    f"Invalid request to OpenAI API: {str(e)}"
-                )
-                
-            except openai.Timeout as e:
-                self.logger.error("Timeout when calling OpenAI API: %s", str(e), exc_info=True)
-                raise openai.Timeout(
-                    "Request to OpenAI API timed out. Please try again."
-                )
+                raise
                 
             except Exception as e:
                 self.logger.error("Unexpected error when calling OpenAI API: %s", str(e), exc_info=True)
-                raise Exception(f"An unexpected error occurred: {str(e)}")
+                raise
                 
         except FileNotFoundError as e:
             self.logger.critical("Prompt template error: %s", str(e))
-            raise 
+            raise

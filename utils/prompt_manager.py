@@ -21,7 +21,7 @@ class PromptTemplateManager:
         # Check if the required directories for this agent type exist
         agent_dir = os.path.join(templates_dir, agent_name)        
         if not os.path.exists(agent_dir):
-            error_msg = f"Templates directory for agent type '{agent_name}' does not exist: {self.agent_dir}"
+            error_msg = f"Templates directory for agent type '{agent_name}' does not exist: {agent_dir}"
             self.logger.critical(error_msg)
             raise FileNotFoundError(error_msg)
         else:

@@ -163,12 +163,21 @@ class ChatUI {
         const currentTime = this.getFormattedTime();
         const userMessageDiv = document.createElement('div');
         userMessageDiv.className = 'message user-message bg-primary-100 p-3 rounded-lg ml-auto max-w-[80%] fade-in';
-        userMessageDiv.innerHTML = `
-            <div class="message-content">
-                <p>${message}</p>
-                <div class="message-timestamp">${currentTime}</div>
-            </div>
-        `;
+
+        const messageContentDiv = document.createElement('div');
+        messageContentDiv.className = 'message-content';
+
+        const messageParagraph = document.createElement('p');
+        messageParagraph.textContent = message;
+
+        const timestampDiv = document.createElement('div');
+        timestampDiv.className = 'message-timestamp';
+        timestampDiv.textContent = currentTime;
+
+        messageContentDiv.appendChild(messageParagraph);
+        messageContentDiv.appendChild(timestampDiv);
+        userMessageDiv.appendChild(messageContentDiv);
+
         chatBox.appendChild(userMessageDiv);
     }
     

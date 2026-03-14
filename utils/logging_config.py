@@ -104,6 +104,3 @@ def init_logging():
         app_name=app_name,
         component_levels=component_levels
     )
-
-# Initialize logging when module is imported
-init_logging() 
