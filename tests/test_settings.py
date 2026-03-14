@@ -1,6 +1,7 @@
 import pytest
 
-from utils.settings import get_settings
+from utils import settings as settings_module
+from utils.settings import get_settings, load_project_env
 
 
 def test_get_settings_defaults_match_no_auth_baseline(monkeypatch):
@@ -18,9 +19,9 @@ def test_get_settings_defaults_match_no_auth_baseline(monkeypatch):
 
     settings = get_settings()
 
-    assert settings.openai_model == "gpt-4o-mini"
+    assert settings.openai_model == "gpt-5-mini"
     assert settings.openai_prompt_name == "default"
-    assert settings.openai_temperature == 0.0
+    assert settings.openai_temperature == 1.0
     assert settings.openai_timeout_seconds == 30.0
     assert settings.cors_allowed_origins == ["*"]
     assert settings.cors_allow_credentials is False
@@ -56,3 +57,69 @@ def test_get_settings_rejects_wildcard_origin_with_credentials(monkeypatch):
 
     with pytest.raises(ValueError, match="CORS_ALLOW_CREDENTIALS=true requires explicit"):
         get_settings()
+
+
+def test_get_settings_rejects_invalid_temperature_value(monkeypatch):
+    monkeypatch.setenv("OPENAI_TEMPERATURE", "not-a-number")
+
+    with pytest.raises(ValueError, match="OPENAI_TEMPERATURE must be a valid number."):
+        get_settings()
+
+
+@pytest.mark.parametrize("value", ["-0.1", "2.1"], ids=["below_range", "above_range"])
+def test_get_settings_rejects_out_of_range_temperature(monkeypatch, value):
+    monkeypatch.setenv("OPENAI_TEMPERATURE", value)
+
+    with pytest.raises(ValueError, match="OPENAI_TEMPERATURE must be between 0.0 and 2.0."):
+        get_settings()
+
+
+def test_get_settings_rejects_invalid_timeout_value(monkeypatch):
+    monkeypatch.setenv("OPENAI_TIMEOUT_SECONDS", "later")
+
+    with pytest.raises(ValueError, match="OPENAI_TIMEOUT_SECONDS must be a valid number."):
+        get_settings()
+
+
+@pytest.mark.parametrize("value", ["0", "-1"], ids=["zero", "negative"])
+def test_get_settings_rejects_non_positive_timeout(monkeypatch, value):
+    monkeypatch.setenv("OPENAI_TIMEOUT_SECONDS", value)
+
+    with pytest.raises(ValueError, match="OPENAI_TIMEOUT_SECONDS must be greater than 0."):
+        get_settings()
+
+
+def test_get_settings_empty_csv_values_fall_back_to_defaults(monkeypatch):
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", " , ")
+    monkeypatch.setenv("CORS_ALLOWED_METHODS", " , ")
+    monkeypatch.setenv("CORS_ALLOWED_HEADERS", " , ")
+
+    settings = get_settings()
+
+    assert settings.cors_allowed_origins == ["*"]
+    assert settings.cors_allowed_methods == ["*"]
+    assert settings.cors_allowed_headers == ["*"]
+
+
+@pytest.mark.parametrize("value", ["false", "0", "off"], ids=["false", "zero", "off"])
+def test_get_settings_parses_falsey_credentials_values(monkeypatch, value):
+    monkeypatch.setenv("CORS_ALLOW_CREDENTIALS", value)
+
+    settings = get_settings()
+
+    assert settings.cors_allow_credentials is False
+
+
+def test_load_project_env_uses_project_root_env_file(monkeypatch):
+    captured = {}
+
+    def fake_load_dotenv(*, dotenv_path):
+        captured["dotenv_path"] = dotenv_path
+        return True
+
+    monkeypatch.setattr(settings_module, "load_dotenv", fake_load_dotenv)
+
+    result = load_project_env()
+
+    assert result is True
+    assert captured["dotenv_path"] == settings_module.DEFAULT_ENV_FILE

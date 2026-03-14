@@ -37,9 +37,9 @@ def load_project_env(env_file: Path = DEFAULT_ENV_FILE) -> bool:
 def get_settings() -> RuntimeSettings:
     settings = RuntimeSettings(
         openai_api_key=_get_optional_env("OPENAI_API_KEY"),
-        openai_model=_get_optional_env("OPENAI_MODEL") or "gpt-4o-mini",
+        openai_model=_get_optional_env("OPENAI_MODEL") or "gpt-5-mini",
         openai_prompt_name=_get_optional_env("OPENAI_PROMPT_NAME") or "default",
-        openai_temperature=_get_float_env("OPENAI_TEMPERATURE", default=0.0),
+        openai_temperature=_get_float_env("OPENAI_TEMPERATURE", default=1.0),
         openai_timeout_seconds=_get_float_env("OPENAI_TIMEOUT_SECONDS", default=30.0),
         cors_allowed_origins=_get_csv_env("CORS_ALLOWED_ORIGINS", default=["*"]),
         cors_allow_credentials=_get_bool_env("CORS_ALLOW_CREDENTIALS", default=False),

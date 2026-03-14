@@ -1,6 +1,7 @@
 import openai
 from openai.types.chat import ChatCompletionMessageParam
 from pathlib import Path
+from typing import Any
 
 from .base_agent import BaseAgent
 from utils.logging_config import get_logger
@@ -17,9 +18,9 @@ class OpenAIAgent(BaseAgent):
     def __init__(
         self,
         api_key,
-        model="gpt-4o-mini",
+        model="gpt-5-mini",
         prompt_name="default",
-        temperature=0.0,
+        temperature=1.0,
         timeout=30.0,
         templates_dir: str | Path | None = None,
     ):
@@ -84,7 +85,8 @@ class OpenAIAgent(BaseAgent):
             "gpt-4": "GPT-4",
             "gpt-4-turbo": "GPT-4 Turbo",
             "gpt-4o": "GPT-4o",
-            "gpt-4o-mini": "GPT-4o Mini"
+            "gpt-4o-mini": "GPT-4o Mini",
+            "gpt-5-mini": "GPT-5 Mini",
         }
         
         # Return the display name if it exists, otherwise return the model name
@@ -143,12 +145,7 @@ class OpenAIAgent(BaseAgent):
                 self.logger.info("openai_agent.request_started model=%s message_chars=%s", self.model, len(message))
                 
                 # Call OpenAI API
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=self.temperature,
-                    timeout=self.timeout,
-                )
+                response = self.client.chat.completions.create(**self._build_completion_request(messages))
 
                 response_text = self._extract_response_text(response)
 
@@ -222,3 +219,24 @@ class OpenAIAgent(BaseAgent):
             raise EmptyModelResponseError(error_msg)
 
         return response_text
+
+    def _build_completion_request(self, messages: list[ChatCompletionMessageParam]) -> dict[str, Any]:
+        request: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "timeout": self.timeout,
+        }
+
+        if self._supports_custom_temperature():
+            request["temperature"] = self.temperature
+        elif self.temperature != 1.0:
+            self.logger.info(
+                "openai_agent.temperature_omitted model=%s configured_temperature=%s",
+                self.model,
+                self.temperature,
+            )
+
+        return request
+
+    def _supports_custom_temperature(self) -> bool:
+        return not self.model.startswith("gpt-5")

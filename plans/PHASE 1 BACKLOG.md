@@ -5,17 +5,6 @@ Items are intentionally unnumbered so they can be reordered as priorities change
 
 -- 
 
-## Expand Regression Coverage For Baseline Reliability
-
-A small project still needs strong confidence in its core behavior. This item adds focused, deterministic tests around known fragile paths so refactors and experiments do not regress the baseline chat flow. The emphasis is on high-signal test coverage, not test volume, with particular attention to the startup and configuration behavior that now defines Phase 1 quality.
-
-- Add tests for key error and fallback paths in message processing.
-- Add tests for startup/readiness and configuration-related behavior that affects local reliability.
-- Add tests for rendering/formatting edge cases that affect chat output.
-- Keep tests offline and deterministic with mocked external dependencies.
-
--- 
-
 ## Strengthen Baseline Request And Failure UX
 
 Reliable single-chat behavior depends on the browser experience as well as the backend path. Phase 1 should make the request cycle predictable under normal use and common failure conditions, so the app feels stable even before broader chat features or streaming exist.

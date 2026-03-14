@@ -1,9 +1,11 @@
 from pathlib import Path
+import types
 
 import main
 import httpx
 import openai
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from agents.openai_agent import EmptyModelResponseError
@@ -65,6 +67,36 @@ def test_readiness_check_returns_503_when_agent_is_missing(client):
                 "name": "agent_initialized",
                 "status": "failed",
                 "detail": "Chat agent is not available to process messages.",
+            }
+        ],
+    }
+
+
+def test_readiness_check_reports_partial_startup_when_agent_exists_but_startup_is_incomplete(client):
+    client.app.state.startup_complete = False
+
+    response = client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready",
+        "checks": [
+            {
+                "name": "startup_completed",
+                "status": "failed",
+                "detail": "Application startup has not completed successfully.",
+            },
+            {
+                "name": "agent_initialized",
+                "status": "ok",
+                "detail": "Chat agent is initialized.",
+            },
+        ],
+        "failed_checks": [
+            {
+                "name": "startup_completed",
+                "status": "failed",
+                "detail": "Application startup has not completed successfully.",
             }
         ],
     }
@@ -199,6 +231,33 @@ def test_send_message_handles_api_timeout_error(client, monkeypatch):
     assert "Request Timeout" in result.text
 
 
+def test_send_message_handles_bad_request_error(client, monkeypatch):
+    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    response = httpx.Response(400, request=request)
+
+    def raise_bad_request_error(_msg):
+        raise openai.BadRequestError("bad request", response=response, body={})
+
+    monkeypatch.setattr(client.app.state.agent, "process_message", raise_bad_request_error)
+    result = client.post("/send-message-htmx", data={"message": "Hi"})
+
+    assert result.status_code == 502
+    assert "AI Service Error" in result.text
+
+
+def test_send_message_handles_generic_openai_api_error(client, monkeypatch):
+    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+
+    def raise_api_error(_msg):
+        raise openai.APIError("api failed", request=request, body={})
+
+    monkeypatch.setattr(client.app.state.agent, "process_message", raise_api_error)
+    result = client.post("/send-message-htmx", data={"message": "Hi"})
+
+    assert result.status_code == 500
+    assert "AI Service Error" in result.text
+
+
 def test_send_message_handles_empty_model_response(client, monkeypatch):
     def raise_empty_model_response(_msg):
         raise EmptyModelResponseError("AI response did not include any text content")
@@ -242,6 +301,40 @@ def test_send_message_handles_runtime_error_without_except_typeerror(client, mon
     assert "do not inherit from BaseException" not in result.text
 
 
+def test_get_agent_raises_503_when_agent_is_unavailable(client):
+    del client.app.state.agent
+
+    with pytest.raises(HTTPException) as exc_info:
+        main._get_agent(types.SimpleNamespace(app=client.app))
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == "AI agent unavailable"
+
+
+def test_render_bot_message_escapes_title_and_applies_error_style():
+    rendered = main._render_bot_message(
+        "<strong>safe body</strong>",
+        "10:00 AM",
+        "<script>alert('x')</script>",
+        is_error=True,
+    )
+
+    assert "bot-message" in rendered
+    assert "error-message" in rendered
+    assert "&lt;script&gt;alert" in rendered
+    assert "<script>" not in rendered
+    assert "<strong>safe body</strong>" in rendered
+
+
+def test_render_error_message_escapes_body_and_sets_status_code():
+    response = main._render_error_message("Invalid Input", "<b>bad</b>", "10:00 AM", 400)
+
+    assert response.status_code == 400
+    assert "error-message" in response.body.decode()
+    assert "&lt;b&gt;bad&lt;/b&gt;" in response.body.decode()
+    assert "<b>bad</b>" not in response.body.decode()
+
+
 def test_create_app_defers_logging_and_agent_init_until_startup(monkeypatch):
     calls = {"init_logging": 0, "agent_ctor": 0}
 
@@ -273,7 +366,7 @@ def test_create_app_defers_logging_and_agent_init_until_startup(monkeypatch):
     with TestClient(app) as startup_client:
         assert calls == {"init_logging": 1, "agent_ctor": 1}
         assert startup_client.app.state.agent.display_name == "Fake Bot"
-        assert startup_client.app.state.agent.model == "gpt-4o-mini"
+        assert startup_client.app.state.agent.model == "gpt-5-mini"
 
 
 def test_create_app_fails_with_clear_message_when_openai_key_missing(monkeypatch):
@@ -331,9 +424,9 @@ def test_create_app_fails_with_clear_message_when_system_prompt_template_missing
 def test_create_app_uses_env_driven_cors_configuration():
     settings = RuntimeSettings(
         openai_api_key="test-key",
-        openai_model="gpt-4o-mini",
+        openai_model="gpt-5-mini",
         openai_prompt_name="default",
-        openai_temperature=0.0,
+        openai_temperature=1.0,
         openai_timeout_seconds=30.0,
         cors_allowed_origins=["https://example.com", "https://internal.example"],
         cors_allow_credentials=True,

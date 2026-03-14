@@ -1,6 +1,9 @@
 from pathlib import Path
 
+import pytest
+
 from utils import diagnostics
+from utils.diagnostics import DiagnosticCheck, StartupDiagnosticsError
 from utils.settings import RuntimeSettings
 
 
@@ -21,9 +24,9 @@ def test_collect_startup_checks_reports_missing_openai_key(monkeypatch):
     checks = diagnostics.collect_startup_checks(
         RuntimeSettings(
             openai_api_key=None,
-            openai_model="gpt-4o-mini",
+            openai_model="gpt-5-mini",
             openai_prompt_name="default",
-            openai_temperature=0.0,
+            openai_temperature=1.0,
             openai_timeout_seconds=30.0,
             cors_allowed_origins=["*"],
             cors_allow_credentials=False,
@@ -43,9 +46,9 @@ def test_collect_startup_checks_uses_configured_prompt_name(monkeypatch):
     checks = diagnostics.collect_startup_checks(
         RuntimeSettings(
             openai_api_key="test-key",
-            openai_model="gpt-4o-mini",
+            openai_model="gpt-5-mini",
             openai_prompt_name="portable_baseline",
-            openai_temperature=0.0,
+            openai_temperature=1.0,
             openai_timeout_seconds=30.0,
             cors_allowed_origins=["*"],
             cors_allow_credentials=False,
@@ -57,6 +60,37 @@ def test_collect_startup_checks_uses_configured_prompt_name(monkeypatch):
     prompt_check = next(check for check in checks if check.name == "system_prompt_template")
     assert prompt_check.ok is False
     assert "system_portable_baseline.j2" in prompt_check.detail
+
+
+def test_diagnostic_check_as_readiness_item_maps_status():
+    check = DiagnosticCheck(name="startup_completed", ok=False, detail="Not ready yet.")
+
+    assert check.as_readiness_item() == {
+        "name": "startup_completed",
+        "status": "failed",
+        "detail": "Not ready yet.",
+    }
+
+
+def test_raise_for_failed_startup_checks_preserves_all_failures():
+    checks = [
+        DiagnosticCheck(name="OPENAI_API_KEY", ok=False, detail="Missing required environment variable."),
+        DiagnosticCheck(name="static_dir", ok=False, detail="Missing required path."),
+    ]
+
+    with pytest.raises(StartupDiagnosticsError) as exc_info:
+        diagnostics.raise_for_failed_startup_checks(checks)
+
+    assert exc_info.value.failures == checks
+    assert "OPENAI_API_KEY: Missing required environment variable." in str(exc_info.value)
+    assert "static_dir: Missing required path." in str(exc_info.value)
+
+
+def test_get_required_startup_paths_uses_configured_prompt_name():
+    paths = diagnostics.get_required_startup_paths("portable")
+
+    prompt_path = next(path for name, path, _remediation in paths if name == "system_prompt_template")
+    assert prompt_path == diagnostics.PROJECT_ROOT / "templates/prompts/openai/system_portable.j2"
 
 
 def test_build_readiness_payload_reports_failed_checks():

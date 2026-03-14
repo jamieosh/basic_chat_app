@@ -2,12 +2,20 @@
 
 ## 2026-03-14
 
+### Expand Regression Coverage For Baseline Reliability
+
+- Added focused regression tests for route helper behavior, partial readiness states, and remaining OpenAI error branches.
+- Added settings and diagnostics coverage for invalid values, fallback defaults, failure summaries, and prompt-specific startup paths.
+- Added agent-level regression tests for context-prefix behavior, prompt lookup failures, and GPT-5 temperature-parameter compatibility.
+- Added formatter edge-case coverage for empty input, empty fenced blocks, adjacent code fences, and invalid input types.
+
 ### Finish Portability And Configuration Baseline
 
 - Added a central runtime settings layer for OpenAI and CORS configuration.
 - Made `.env` loading explicitly project-root-based so startup does not depend on the current working directory.
 - Switched CORS behavior to environment-driven defaults aligned with the current no-auth baseline.
 - Allowed model name, prompt name, timeout, and temperature to be configured without code changes.
+- Adjusted GPT-5 request construction to omit unsupported `temperature` parameters while preserving custom temperature support for older model families.
 - Updated setup documentation and example environment configuration to match the supported runtime surface.
 - Added regression coverage for settings parsing, CORS wiring, configured prompt lookup, and env-driven agent startup.
 
@@ -32,5 +40,9 @@
 - Removed hardcoded domain-specific default context from the baseline OpenAI request path.
 - Renamed the default assistant identity to the neutral, repo-branded `AI Chat`.
 - Kept the user-context prompt seam in place while making it empty by default.
-- Fixed the default OpenAI request temperature at `0.0` and documented Phase 1 baseline guarantees in the README.
+- Updated the default OpenAI temperature baseline to align with the current GPT-5 default-model behavior.
 - Added regression tests that lock the default prompt payload to raw user input unless context is explicitly configured.
+
+### Polish Baseline Chat Input Layout
+
+- Synced the `Send` button height with the textarea's rendered single-line height so the chat composer stays visually aligned before the input expands.

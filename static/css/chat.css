@@ -36,6 +36,13 @@ textarea#message-input {
     border-radius: 2px;
 }
 
+.chat-submit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 2px;
+}
+
 textarea#message-input:focus {
     outline: none;
 }

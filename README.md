@@ -15,7 +15,7 @@ Those documents define the long-term direction and maturity phases. This README 
 
 - Server-rendered web chat UI with HTMX interactions.
 - Single-turn request/response chat flow.
-- OpenAI-backed agent implementation (`gpt-4o-mini` by default).
+- OpenAI-backed agent implementation (`gpt-5-mini` by default).
 - Prompt-template-driven system and user prompt construction.
 - Neutral `AI Chat` defaults with no implicit domain context or memory.
 - Safe HTML rendering with fenced code block formatting.
@@ -28,7 +28,7 @@ The portability and configuration baseline is now part of the current default be
 - Startup path resolution is project-root-aware rather than dependent on the shell's current working directory.
 - Runtime behavior is configurable through environment variables instead of route-level or agent-level constants.
 - Default CORS behavior matches the current no-auth posture: wildcard origins are allowed, but credentials stay disabled unless you opt into explicit origins.
-- Prompt/template selection, OpenAI model choice, timeout, and temperature can be changed without modifying application code.
+- Prompt/template selection, OpenAI model choice, timeout, and compatible temperature settings can be changed without modifying application code.
 
 ## Near-Term Product Shape
 
@@ -91,9 +91,11 @@ basic_chat_app/
 │   ├── components/       # Reusable components
 │   └── prompts/         # AI prompt templates
 ├── utils/               # Utility functions
+│   ├── diagnostics.py
 │   ├── html_formatter.py
 │   ├── logging_config.py
-│   └── prompt_manager.py
+│   ├── prompt_manager.py
+│   └── settings.py
 ├── main.py             # FastAPI application
 ├── pyproject.toml      # Project metadata and dependencies
 └── uv.lock             # Locked dependency versions for uv
@@ -146,9 +148,9 @@ uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 Supported runtime environment variables:
 
 - `OPENAI_API_KEY`: required API key for the OpenAI client.
-- `OPENAI_MODEL`: optional model name. Default: `gpt-4o-mini`.
+- `OPENAI_MODEL`: optional model name. Default: `gpt-5-mini`.
 - `OPENAI_PROMPT_NAME`: optional prompt template suffix. Default: `default`.
-- `OPENAI_TEMPERATURE`: optional model temperature from `0.0` to `2.0`. Default: `0.0`.
+- `OPENAI_TEMPERATURE`: optional model temperature from `0.0` to `2.0`. Default: `1.0`.
 - `OPENAI_TIMEOUT_SECONDS`: optional OpenAI request timeout. Default: `30`.
 - `CORS_ALLOWED_ORIGINS`: comma-separated allowed origins. Default: `*`.
 - `CORS_ALLOW_CREDENTIALS`: enables credentialed CORS requests. Default: `false`.
@@ -161,7 +163,7 @@ For the default no-auth baseline, keep `CORS_ALLOW_CREDENTIALS=false`. If you en
 ### Baseline Defaults
 
 - The default assistant identity is `AI Chat`.
-- The default chat request uses a fixed prompt name and `temperature=0.0`.
+- The default chat request uses a fixed prompt name. With the default `gpt-5-mini` model, the effective request temperature remains the model default.
 - The default system prompt is generic.
 - The default user-context prompt remains available as a customization seam, but contributes nothing unless you explicitly add context variables or edit the template.
 - The app does not keep multi-turn memory in Phase 1; each request is handled independently.
@@ -172,6 +174,7 @@ For the default no-auth baseline, keep `CORS_ALLOW_CREDENTIALS=false`. If you en
 - Prefer small, localized changes over broad rewrites.
 - Follow established error handling and logging patterns.
 - Add or update tests with behavior changes.
+- Preserve the current deterministic baseline coverage around startup/configuration, message formatting, and request failure paths.
 - Keep docs aligned with `plans/VISION.md` and `plans/PHASES.md`.
 
 ## License

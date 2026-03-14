@@ -17,7 +17,7 @@ Current stage:
 
 - Serves a chat page at `/`
 - Accepts message submissions at `/send-message-htmx`
-- Calls OpenAI (currently `gpt-4o-mini`) through `agents/openai_agent.py`
+- Calls OpenAI (currently `gpt-5-mini`) through `agents/openai_agent.py`
 - Formats text/code-block output into HTML
 - Returns inline bot message HTML for HTMX insertion
 - Exposes a basic health check at `/health`

@@ -1,3 +1,5 @@
+import pytest
+
 from utils.html_formatter import format_response_as_html
 
 
@@ -58,3 +60,30 @@ def test_formatter_handles_mixed_text_and_code_blocks():
     assert response.startswith("Intro<br>")
     assert "<pre" in response
     assert response.endswith("<br>Outro")
+
+
+def test_formatter_rejects_non_string_input():
+    with pytest.raises(TypeError, match="Response must be a string"):
+        format_response_as_html(["not", "text"])
+
+
+def test_formatter_returns_empty_string_for_empty_response():
+    assert format_response_as_html("") == ""
+
+
+def test_formatter_formats_empty_fenced_code_block():
+    response = format_response_as_html("```\n```")
+
+    assert '<pre class="' in response
+    assert "<code></code>" in response
+
+
+def test_formatter_formats_adjacent_fenced_code_blocks():
+    raw = "```python\nx=1\n``````js\ny=2\n```"
+    response = format_response_as_html(raw)
+
+    assert response.count("<pre") == 2
+    assert "language-python" in response
+    assert "language-js" in response
+    assert "x=1" in response
+    assert "y=2" in response

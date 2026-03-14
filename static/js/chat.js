@@ -4,6 +4,7 @@ class ChatUI {
         this.chatBoxId = options.chatBoxId || 'chat-box';
         this.formId = options.formId || 'chat-form';
         this.messageInputId = options.messageInputId || 'message-input';
+        this.submitButtonId = options.submitButtonId || 'send-button';
         this.welcomeTimestampId = options.welcomeTimestampId || 'welcome-timestamp';
         
         this.init();
@@ -32,6 +33,7 @@ class ChatUI {
 
         // Set initial height
         this.adjustTextareaHeight(textarea);
+        this.syncSubmitButtonHeight(textarea);
 
         // Add input event listener for auto-resize
         textarea.addEventListener('input', () => {
@@ -71,7 +73,15 @@ class ChatUI {
             textarea.value = '';
             textarea.style.height = 'auto';
             this.adjustTextareaHeight(textarea);
+            this.syncSubmitButtonHeight(textarea);
         }
+    }
+
+    syncSubmitButtonHeight(textarea) {
+        const submitButton = document.getElementById(this.submitButtonId);
+        if (!submitButton) return;
+
+        submitButton.style.height = `${textarea.offsetHeight}px`;
     }
     
     getFormattedTime() {

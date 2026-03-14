@@ -26,12 +26,12 @@ def test_process_message_builds_prompt_and_returns_model_text():
     reply = agent.process_message("Hello there")
 
     assert reply == "Mock reply"
-    assert captured["model"] == "gpt-4o-mini"
-    assert captured["temperature"] == 0.0
+    assert captured["model"] == "gpt-5-mini"
     assert captured["timeout"] == 30
     assert captured["messages"][0]["role"] == "system"
     assert captured["messages"][1]["role"] == "user"
     assert captured["messages"][1]["content"] == "Hello there"
+    assert "temperature" not in captured
 
 
 def test_process_message_rejects_blank_input():
@@ -42,10 +42,10 @@ def test_process_message_rejects_blank_input():
 
 
 def test_display_name_and_known_model_display_name():
-    agent = OpenAIAgent(api_key="test-key", model="gpt-4o")
+    agent = OpenAIAgent(api_key="test-key", model="gpt-5-mini")
 
     assert agent.display_name == "AI Chat"
-    assert agent.model_display_name == "GPT-4o"
+    assert agent.model_display_name == "GPT-5 Mini"
 
 
 def test_unknown_model_display_name_falls_back_to_model():
@@ -91,6 +91,29 @@ def test_process_message_uses_configured_prompt_name_temperature_and_timeout(tmp
     assert captured["messages"][0]["content"] == "System prompt"
 
 
+def test_process_message_omits_custom_temperature_for_gpt5_models():
+    agent = OpenAIAgent(api_key="test-key", model="gpt-5-mini", temperature=0.2)
+    captured = {}
+
+    def fake_create(**kwargs):
+        captured.update(kwargs)
+        return types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="Mock reply"))]
+        )
+
+    agent.client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=fake_create)
+        )
+    )
+
+    reply = agent.process_message("Hello there")
+
+    assert reply == "Mock reply"
+    assert captured["model"] == "gpt-5-mini"
+    assert "temperature" not in captured
+
+
 def test_process_message_without_context_prompt_uses_raw_user_message():
     agent = OpenAIAgent(api_key="test-key")
     captured = {}
@@ -115,6 +138,29 @@ def test_process_message_without_context_prompt_uses_raw_user_message():
 
     assert reply == "No context reply"
     assert captured["messages"][1]["content"] == "Just this message"
+
+
+def test_process_message_prepends_rendered_context_when_present():
+    agent = OpenAIAgent(api_key="test-key")
+    captured = {}
+
+    def fake_create(**kwargs):
+        captured.update(kwargs)
+        return types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="Context reply"))]
+        )
+
+    agent.prompt_manager.get_context_prompt = lambda *_args, **_kwargs: "Use metric units."
+    agent.client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=fake_create)
+        )
+    )
+
+    reply = agent.process_message("How far is it?")
+
+    assert reply == "Context reply"
+    assert captured["messages"][1]["content"] == "Use metric units.\n\nHow far is it?"
 
 
 def test_default_context_prompt_is_empty_for_neutral_baseline():
@@ -156,6 +202,18 @@ def test_process_message_raises_when_model_content_is_missing():
     )
 
     with pytest.raises(EmptyModelResponseError, match="did not include any text content"):
+        agent.process_message("Hello there")
+
+
+def test_process_message_reraises_file_not_found_when_system_prompt_lookup_fails():
+    agent = OpenAIAgent(api_key="test-key")
+
+    def missing_system_prompt(*_args, **_kwargs):
+        raise FileNotFoundError("system prompt missing")
+
+    agent.prompt_manager.get_system_prompt = missing_system_prompt
+
+    with pytest.raises(FileNotFoundError, match="system prompt missing"):
         agent.process_message("Hello there")
 
 
