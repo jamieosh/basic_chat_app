@@ -2,6 +2,14 @@
 
 ## 2026-03-14
 
+### Complete Phase 1 Documentation Alignment
+
+- Added a clear `Phase 1 Complete Means` definition and explicit default security posture to the README.
+- Documented the primary safe customization points for prompts, runtime wiring, and chat UI behavior.
+- Updated the Phase 1 description in `plans/PHASES.md` to mark it complete and describe the shipped baseline accurately.
+- Tightened `plans/VISION.md` language so authentication, streaming, persisted multi-chat continuity, runtime abstraction, and deployment hardening remain clearly deferred beyond Phase 1.
+- Reduced `plans/PHASE 1 BACKLOG.md` to an explicit no-remaining-items marker.
+
 ### Reduce External Runtime Fragility
 
 - Kept CDN-hosted HTMX and Tailwind as the intentional Phase 1 default instead of introducing a frontend build step.

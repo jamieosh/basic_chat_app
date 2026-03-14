@@ -50,12 +50,14 @@ Even as features grow, these must remain simple:
 - "Everything included" agent framework behavior.
 - Mandatory enterprise-grade security in default setup.
 - Replicating LLM or Agent frameworks.
+- Treating authentication, persisted multi-chat continuity, streaming, or generalized runtime abstraction as baseline requirements before later phases call for them.
 
 ## Security Philosophy
 
 - The default template is not required to be secure by default.
 - The framework must make it feasible to add secure patterns when needed.
 - Security hardening is a later, optional maturity concern.
+- The completed Phase 1 workbench remains intentionally local-first and experimentation-first rather than deployment-hardened by default.
 
 ## Phased Maturity Model
 

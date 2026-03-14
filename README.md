@@ -33,6 +33,26 @@ The portability and configuration baseline is now part of the current default be
 - Prompt/template selection, OpenAI model choice, timeout, and compatible temperature settings can be changed without modifying application code.
 - The browser chat flow prevents duplicate sends, uses a minimal typing indicator during normal requests, and renders degraded-service states inline when the backend is unavailable or a request fails.
 
+## Phase 1 Complete Means
+
+Phase 1 is complete when a contributor can clone the repository, set `OPENAI_API_KEY`, run the app, and successfully chat through the default web UI without changing code.
+
+The completed Phase 1 baseline is:
+
+- single-turn request/response chat only
+- deterministic validation and inline request-failure handling
+- portable startup and environment-driven runtime configuration
+- no frontend build step required for the default UI
+- clear extension seams for prompts, provider wiring, and chat UI behavior
+
+Phase 1 does not include:
+
+- authentication
+- multi-chat continuity or persisted history
+- streaming responses
+- generalized chat-runtime/provider abstraction
+- deployment hardening for public internet exposure
+
 ## Near-Term Product Shape
 
 - Keep the core simple and predictable.
@@ -108,6 +128,17 @@ Maintainer note:
 
 - HTMX version changes should remain exact and explicitly reviewed.
 - Tailwind CDN usage is a temporary Phase 1 convenience for the no-build-step baseline, not a long-term commitment to public-CDN runtime delivery.
+
+## Current Security Posture
+
+The default template is for local development and experimentation, not for exposed public deployment.
+
+- no authentication is included
+- no persistence, rate limiting, or CSRF protection is included
+- wildcard CORS is part of the current no-auth baseline, with credentials disabled by default
+- deployment hardening is intentionally deferred beyond Phase 1
+
+Forks that move beyond trusted local or internal use should plan explicit security and operational hardening.
 
 ## Project Structure
 
@@ -191,6 +222,13 @@ Supported runtime environment variables:
 - `LOG_LEVEL`, `COMPONENT_LOG_LEVELS`, `LOG_TO_FILE`, `LOG_DIR`, `APP_NAME`: optional logging controls.
 
 For the default no-auth baseline, keep `CORS_ALLOW_CREDENTIALS=false`. If you enable credentials, use explicit `CORS_ALLOWED_ORIGINS` values instead of `*`.
+
+### Safe Customization Points
+
+- Prompts: edit `templates/prompts/openai/` to change the default system or user prompt behavior.
+- Model and runtime settings: use environment variables first, then `utils/settings.py` if you need to change the supported configuration surface.
+- Provider wiring: edit `agents/openai_agent.py` to change OpenAI-specific request construction or swap in a different agent implementation behind the existing app contract.
+- Chat UI behavior: edit `templates/components/chat.html`, `static/js/chat.js`, and `static/css/chat.css`.
 
 ### Baseline Defaults
 

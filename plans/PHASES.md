@@ -2,9 +2,19 @@
 
 -- 
 
-### 1. Reliable Single-Chat Baseline
+### 1. Reliable Single-Chat Baseline (Completed)
 
-This phase establishes the core promise of the project: a developer can clone, run, and immediately chat with an LLM through a clean web UI. The emphasis is reliability, clarity, portability, and fast iteration, not broad feature depth. The app should remain stable and predictable for experimentation, with simple code paths, portable startup/configuration behavior, deterministic validation, and obvious extension seams so contributors can quickly understand and adjust behavior.
+This phase established the core promise of the project: a developer can clone, run, and immediately chat with an LLM through a clean web UI. The emphasis in this phase was reliability, clarity, portability, and fast iteration, not broad feature depth. The resulting baseline is stable and predictable for experimentation, with simple code paths, portable startup/configuration behavior, deterministic validation, explicit browser-runtime assumptions, and obvious extension seams so contributors can quickly understand and adjust behavior.
+
+Phase 1 complete means:
+
+- the app can be cloned, configured with `OPENAI_API_KEY`, started, and used to chat without code changes
+- the default UX is a single-turn request/response flow with predictable validation and inline failure handling
+- runtime configuration is environment-driven rather than embedded in route-level constants
+- the default UI works without a frontend build step, with explicit CDN runtime assumptions documented
+- prompts, provider wiring, and chat UI behavior can be changed through small, localized edits
+
+Phase 1 intentionally does not include authentication, persisted multi-chat continuity, streaming responses, generalized runtime abstraction, or deployment hardening for public internet exposure.
 
 --
 
