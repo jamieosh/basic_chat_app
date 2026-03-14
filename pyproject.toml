@@ -1,9 +1,9 @@
 [project]
 name = "basic-chat-app"
 version = "0.1.0"
-description = "Add your description here"
+description = "A lightweight FastAPI + HTMX chat workbench for experimenting with OpenAI-backed chat flows."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.135.1",
     "jinja2>=3.1.6",
@@ -32,13 +32,13 @@ filterwarnings = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py313"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.11"
 check_untyped_defs = true
 exclude = ["^tests/"]
 no_implicit_optional = true

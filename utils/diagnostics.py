@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 
 @dataclass(frozen=True)
 class DiagnosticCheck:
@@ -28,22 +30,22 @@ class StartupDiagnosticsError(RuntimeError):
 REQUIRED_STARTUP_PATHS: list[tuple[str, Path, str]] = [
     (
         "templates_dir",
-        Path("templates"),
+        PROJECT_ROOT / "templates",
         "Restore the templates directory in the project root.",
     ),
     (
         "openai_prompts_dir",
-        Path("templates/prompts/openai"),
+        PROJECT_ROOT / "templates/prompts/openai",
         "Restore the OpenAI prompt templates directory.",
     ),
     (
         "system_prompt_template",
-        Path("templates/prompts/openai/system_default.j2"),
+        PROJECT_ROOT / "templates/prompts/openai/system_default.j2",
         "Restore templates/prompts/openai/system_default.j2 or update the configured prompt name.",
     ),
     (
         "static_dir",
-        Path("static"),
+        PROJECT_ROOT / "static",
         "Restore the static assets directory in the project root.",
     ),
 ]

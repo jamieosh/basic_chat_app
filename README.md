@@ -35,17 +35,22 @@ git clone <repository-url>
 cd basic_chat_app
 ```
 
-2. Use Python 3.13+ and sync dependencies with `uv`:
+2. Use Python 3.11+ and sync dependencies with `uv`:
 ```bash
 uv sync
 ```
 
-3. Create a `.env` file in the project root and add your OpenAI API key:
+3. Create your local environment file from the checked-in example:
+```bash
+cp .env.example .env
+```
+
+4. Add your OpenAI API key to `.env`:
 ```dotenv
 OPENAI_API_KEY=your_api_key_here
 ```
 
-4. Run the application:
+5. Run the application:
 ```bash
 uv run uvicorn main:app --reload
 ```
@@ -54,7 +59,7 @@ The application will be available at `http://localhost:8000`.
 
 ## Dependencies
 
-- Python 3.13+
+- Python 3.11+
 - FastAPI
 - HTMX
 - OpenAI Python Client

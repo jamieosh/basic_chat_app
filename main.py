@@ -1,9 +1,10 @@
 import asyncio
 import html
 import os
-from textwrap import dedent
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
+from textwrap import dedent
 
 import openai
 from dotenv import load_dotenv
@@ -24,8 +25,12 @@ from utils.diagnostics import (
 from utils.html_formatter import format_response_as_html
 from utils.logging_config import get_logger, init_logging
 
+APP_ROOT = Path(__file__).resolve().parent
+TEMPLATES_DIR = APP_ROOT / "templates"
+STATIC_DIR = APP_ROOT / "static"
+
 logger = get_logger("api")
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 def _get_agent(request: Request) -> OpenAIAgent:
@@ -138,7 +143,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.mount("/static", StaticFiles(directory="static", check_dir=False), name="static")
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR), check_dir=False), name="static")
 
     @app.get("/", response_class=HTMLResponse)
     async def home(request: Request):

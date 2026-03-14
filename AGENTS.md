@@ -54,7 +54,7 @@ Current stage:
 
 ## Run Locally
 
-1. Use Python 3.13+.
+1. Use Python 3.11+.
 2. Install dependencies with `uv`:
    - `uv sync`
 3. Create `.env` with:
