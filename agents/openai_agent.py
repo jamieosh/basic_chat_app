@@ -135,13 +135,8 @@ class OpenAIAgent(BaseAgent):
                     messages=messages,
                     timeout=30  # Add timeout to prevent hanging requests
                 )
-                
-                # Extract response text
-                response_text = response.choices[0].message.content
-                if response_text is None:
-                    error_msg = "AI response did not include any text content"
-                    self.logger.error("%s for model %s", error_msg, self.model)
-                    raise EmptyModelResponseError(error_msg)
+
+                response_text = self._extract_response_text(response)
 
                 self.logger.info("Received response: %s", truncate_message(response_text))
                 
@@ -178,3 +173,34 @@ class OpenAIAgent(BaseAgent):
         except FileNotFoundError as e:
             self.logger.critical("Prompt template error: %s", str(e))
             raise
+
+    def _extract_response_text(self, response) -> str:
+        choices = getattr(response, "choices", None)
+        if not choices:
+            error_msg = "AI response contained no choices"
+            self.logger.error("%s for model %s", error_msg, self.model)
+            raise EmptyModelResponseError(error_msg)
+
+        message = getattr(choices[0], "message", None)
+        if message is None:
+            error_msg = "AI response choice was missing a message"
+            self.logger.error("%s for model %s", error_msg, self.model)
+            raise EmptyModelResponseError(error_msg)
+
+        response_text = getattr(message, "content", None)
+        if response_text is None:
+            error_msg = "AI response did not include any text content"
+            self.logger.error("%s for model %s", error_msg, self.model)
+            raise EmptyModelResponseError(error_msg)
+
+        if not isinstance(response_text, str):
+            error_msg = "AI response returned non-text content"
+            self.logger.error("%s for model %s", error_msg, self.model)
+            raise EmptyModelResponseError(error_msg)
+
+        if not response_text.strip():
+            error_msg = "AI response returned an empty text response"
+            self.logger.error("%s for model %s", error_msg, self.model)
+            raise EmptyModelResponseError(error_msg)
+
+        return response_text

@@ -98,6 +98,82 @@ def test_process_message_raises_when_model_content_is_missing():
         agent.process_message("Hello there")
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        "",
+        "   ",
+    ],
+    ids=["empty_string", "whitespace_only"],
+)
+def test_process_message_raises_when_model_content_is_blank(content):
+    agent = OpenAIAgent(api_key="test-key")
+
+    def fake_create(**_kwargs):
+        return types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content=content))]
+        )
+
+    agent.client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=fake_create)
+        )
+    )
+
+    with pytest.raises(EmptyModelResponseError, match="empty text response"):
+        agent.process_message("Hello there")
+
+
+def test_process_message_raises_when_response_has_no_choices():
+    agent = OpenAIAgent(api_key="test-key")
+
+    def fake_create(**_kwargs):
+        return types.SimpleNamespace(choices=[])
+
+    agent.client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=fake_create)
+        )
+    )
+
+    with pytest.raises(EmptyModelResponseError, match="no choices"):
+        agent.process_message("Hello there")
+
+
+def test_process_message_raises_when_response_has_no_message():
+    agent = OpenAIAgent(api_key="test-key")
+
+    def fake_create(**_kwargs):
+        return types.SimpleNamespace(choices=[types.SimpleNamespace(message=None)])
+
+    agent.client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=fake_create)
+        )
+    )
+
+    with pytest.raises(EmptyModelResponseError, match="missing a message"):
+        agent.process_message("Hello there")
+
+
+def test_process_message_raises_when_model_content_is_not_a_string():
+    agent = OpenAIAgent(api_key="test-key")
+
+    def fake_create(**_kwargs):
+        return types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content=["not", "text"]))]
+        )
+
+    agent.client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=fake_create)
+        )
+    )
+
+    with pytest.raises(EmptyModelResponseError, match="non-text content"):
+        agent.process_message("Hello there")
+
+
 def _build_agent_that_raises(error):
     agent = OpenAIAgent(api_key="test-key")
 

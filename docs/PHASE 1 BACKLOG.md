@@ -4,17 +4,6 @@ This backlog captures the work needed to complete the "Reliable Single-Chat Base
 Items are intentionally unnumbered so they can be reordered as priorities change.
 
 -- 
-
-## Stabilize The Single-Chat Request/Response Path
-
-The core loop of this project is simple: user sends a message, model responds, UI appends output. This item focuses on making that loop consistently reliable, including edge cases that currently fall into generic failure behavior. The goal is that basic chat always feels dependable and predictable for developers who are testing prompts, models, and small UX changes.
-
-- Strengthen handling for unusual model responses and empty/partial content.
-- Keep response rendering resilient for mixed plain text and fenced code content.
-- Standardize user-facing error responses so failures are understandable and consistent.
-
--- 
-
 ## Improve Startup And Runtime Diagnostics
 
 Phase 1 should be easy to run and troubleshoot without deep system knowledge. This item focuses on clear startup checks and useful runtime signals so developers can quickly identify configuration or dependency problems. Better diagnostics reduce iteration friction and make the project more approachable as a forkable base.

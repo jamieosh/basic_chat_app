@@ -31,6 +31,7 @@ def test_send_message_returns_bot_message_html(client, monkeypatch):
     assert response.status_code == 200
     assert "bot-message" in response.text
     assert "Hello from test" in response.text
+    assert 'class="message-body"' in response.text
 
 
 def test_send_message_offloads_blocking_agent_call_from_event_loop(client, monkeypatch):
@@ -64,13 +65,15 @@ def test_send_message_rejects_blank_messages(client):
 
     assert response.status_code == 400
     assert "Invalid Input" in response.text
-    assert "<p>" not in response.text
+    assert "Message cannot be empty" in response.text
 
 
 def test_send_message_requires_message_field(client):
     response = client.post("/send-message-htmx", data={})
 
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert "Invalid Input" in response.text
+    assert "Message cannot be empty" in response.text
 
 
 def test_send_message_validation_error_escapes_html(client, monkeypatch):
@@ -97,6 +100,7 @@ def test_send_message_handles_rate_limit_error(client, monkeypatch):
 
     assert result.status_code == 429
     assert "Rate Limit Exceeded" in result.text
+    assert 'class="message-body"' in result.text
 
 
 def test_send_message_handles_authentication_error(client, monkeypatch):
@@ -151,6 +155,23 @@ def test_send_message_handles_empty_model_response(client, monkeypatch):
     assert "empty response" in result.text
 
 
+def test_send_message_renders_mixed_text_and_code_without_paragraph_wrapping(client, monkeypatch):
+    monkeypatch.setattr(
+        client.app.state.agent,
+        "process_message",
+        lambda _msg: "Example:\n```python\nprint('ok')\n```\nDone.",
+    )
+
+    result = client.post("/send-message-htmx", data={"message": "Hi"})
+
+    assert result.status_code == 200
+    assert "<pre" in result.text
+    assert "language-python" in result.text
+    assert "<p><pre" not in result.text
+    assert "Example:" in result.text
+    assert "Done." in result.text
+
+
 def test_send_message_handles_runtime_error_without_except_typeerror(client, monkeypatch):
     def raise_runtime_error(_msg):
         raise RuntimeError("boom")
@@ -160,7 +181,8 @@ def test_send_message_handles_runtime_error_without_except_typeerror(client, mon
 
     assert result.status_code == 500
     assert "Unexpected Error" in result.text
-    assert "boom" in result.text
+    assert "Sorry, something went wrong. Please try again." in result.text
+    assert "boom" not in result.text
     assert "do not inherit from BaseException" not in result.text
 
 
