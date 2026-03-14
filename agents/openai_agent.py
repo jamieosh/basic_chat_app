@@ -12,7 +12,7 @@ class EmptyModelResponseError(RuntimeError):
 
 class OpenAIAgent(BaseAgent):
     """Agent that uses OpenAI's API to process messages"""
-    
+
     def __init__(self, api_key, model="gpt-4o-mini"):
         """Initialize the OpenAI agent
         
@@ -26,11 +26,12 @@ class OpenAIAgent(BaseAgent):
         self.client = openai.OpenAI(api_key=api_key)
         self.model = model
         self.prompt_name = "default"
+        self.temperature = 0.0
         self.logger = get_logger("agent.openai")
-        
+
         # Initialize prompt template manager
         self.prompt_manager = PromptTemplateManager(agent_name="openai")
-        
+
         # Variables for templates
         self.system_template_vars = {
             "personality": "friendly, concise, and informative",
@@ -38,9 +39,9 @@ class OpenAIAgent(BaseAgent):
         }
         self.context_template_vars = {
             "user_preferences": "",
-            "domain_knowledge": "Lucky is a cockapoo dog. He is fox red and 8 years old.",
+            "domain_knowledge": "",
         }
-        
+
         # Verify that the prompt templates exist
         try:
             # Check if system prompt exists
@@ -63,7 +64,7 @@ class OpenAIAgent(BaseAgent):
     @property
     def display_name(self):
         """Return the user-friendly display name for the agent"""
-        return "PodcastBot"
+        return "AI Chat"
     
     @property
     def model_display_name(self):
@@ -111,8 +112,8 @@ class OpenAIAgent(BaseAgent):
             try:
                 context_content = self.prompt_manager.get_context_prompt(
                     self.prompt_name, **self.context_template_vars
-                )
-                
+                ).strip()
+
                 # Combine message with context if any
                 user_content = f"{context_content}\n\n{message}" if context_content else message
             except FileNotFoundError:
@@ -135,6 +136,7 @@ class OpenAIAgent(BaseAgent):
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,
+                    temperature=self.temperature,
                     timeout=30  # Add timeout to prevent hanging requests
                 )
 

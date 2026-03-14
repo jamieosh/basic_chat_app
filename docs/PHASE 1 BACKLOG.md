@@ -5,16 +5,6 @@ Items are intentionally unnumbered so they can be reordered as priorities change
 
 -- 
 
-## Keep Default Behavior Deterministic And Neutral
-
-The default baseline should avoid hidden or domain-specific assumptions so results are reproducible across users and forks. This item ensures the initial behavior remains explicit and stable, making comparisons between experiments easier. Determinism is especially important in a workbench intended for rapid technical iteration.
-
-- Remove or isolate hardcoded domain context from the default chat behavior.
-- Keep prompt and baseline memory behavior explicit rather than implicit.
-- Document what deterministic behavior means in this phase.
-
--- 
-
 ## Introduce A Lightweight App-Side Chat Abstraction Seam
 
 The current architecture can evolve over time, but Phase 1 should still lay a clean foundation for future provider and orchestration work. This item is about creating a small, practical boundary at the app layer, without over-designing a full framework abstraction. The intention is to reduce coupling now while keeping future design choices open.

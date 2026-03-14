@@ -1,9 +1,10 @@
-This is additional context for the conversation:
-
-{% if domain_knowledge %}
+{% if domain_knowledge -%}
+Domain knowledge:
 {{ domain_knowledge }}
-{% endif %}
+{% endif -%}
+{% if domain_knowledge and user_preferences -%}
 
-{% if user_preferences %}
+{% endif -%}
+{% if user_preferences -%}
 User preferences: {{ user_preferences }}
 {% endif %}

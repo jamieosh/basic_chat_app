@@ -27,11 +27,11 @@ def test_process_message_builds_prompt_and_returns_model_text():
 
     assert reply == "Mock reply"
     assert captured["model"] == "gpt-4o-mini"
+    assert captured["temperature"] == 0.0
     assert captured["timeout"] == 30
     assert captured["messages"][0]["role"] == "system"
     assert captured["messages"][1]["role"] == "user"
-    assert "Lucky is a cockapoo dog." in captured["messages"][1]["content"]
-    assert captured["messages"][1]["content"].endswith("Hello there")
+    assert captured["messages"][1]["content"] == "Hello there"
 
 
 def test_process_message_rejects_blank_input():
@@ -44,7 +44,7 @@ def test_process_message_rejects_blank_input():
 def test_display_name_and_known_model_display_name():
     agent = OpenAIAgent(api_key="test-key", model="gpt-4o")
 
-    assert agent.display_name == "PodcastBot"
+    assert agent.display_name == "AI Chat"
     assert agent.model_display_name == "GPT-4o"
 
 
@@ -78,6 +78,30 @@ def test_process_message_without_context_prompt_uses_raw_user_message():
 
     assert reply == "No context reply"
     assert captured["messages"][1]["content"] == "Just this message"
+
+
+def test_default_context_prompt_is_empty_for_neutral_baseline():
+    agent = OpenAIAgent(api_key="test-key")
+
+    context = agent.prompt_manager.get_context_prompt(
+        agent.prompt_name, **agent.context_template_vars
+    )
+
+    assert context.strip() == ""
+
+
+def test_context_prompt_renders_only_explicit_context_sections():
+    agent = OpenAIAgent(api_key="test-key")
+
+    context = agent.prompt_manager.get_context_prompt(
+        agent.prompt_name,
+        domain_knowledge="Use metric units.",
+        user_preferences="Prefer short replies.",
+    )
+
+    assert "Domain knowledge:" in context
+    assert "Use metric units." in context
+    assert "User preferences: Prefer short replies." in context
 
 
 def test_process_message_raises_when_model_content_is_missing():

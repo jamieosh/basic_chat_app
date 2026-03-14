@@ -17,6 +17,7 @@ Those documents define the long-term direction and maturity phases. This README 
 - Single-turn request/response chat flow.
 - OpenAI-backed agent implementation (`gpt-4o-mini` by default).
 - Prompt-template-driven system and user prompt construction.
+- Neutral `AI Chat` defaults with no implicit domain context or memory.
 - Safe HTML rendering with fenced code block formatting.
 - Responsive frontend suitable for desktop and mobile.
 
@@ -124,6 +125,14 @@ uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 - Logging configuration can be modified in `utils/logging_config.py`
 - Prompt templates can be customized in `templates/prompts/`
 - UI styling can be adjusted in `static/css/chat.css`
+
+### Baseline Defaults
+
+- The default assistant identity is `AI Chat`.
+- The default chat request uses a fixed prompt name and `temperature=0.0`.
+- The default system prompt is generic.
+- The default user-context prompt remains available as a customization seam, but contributes nothing unless you explicitly add context variables or edit the template.
+- The app does not keep multi-turn memory in Phase 1; each request is handled independently.
 
 ### Best Practices
 

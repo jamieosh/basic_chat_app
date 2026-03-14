@@ -73,7 +73,7 @@ def test_home_renders_chat_header(client):
     response = client.get("/")
 
     assert response.status_code == 200
-    assert "Chat with" in response.text
+    assert "Chat with AI Chat" in response.text
     assert client.app.state.agent.display_name in response.text
     assert client.app.state.agent.model_display_name in response.text
 

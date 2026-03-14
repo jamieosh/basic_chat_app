@@ -17,3 +17,11 @@
 - Returned deterministic 400 responses for missing or blank user messages.
 - Stopped exposing raw unexpected exception text in user-facing error messages.
 - Added regression tests for route errors, formatter edge cases, and model-response fallback paths.
+
+### Keep Default Behavior Deterministic And Neutral
+
+- Removed hardcoded domain-specific default context from the baseline OpenAI request path.
+- Renamed the default assistant identity to the neutral, repo-branded `AI Chat`.
+- Kept the user-context prompt seam in place while making it empty by default.
+- Fixed the default OpenAI request temperature at `0.0` and documented Phase 1 baseline guarantees in the README.
+- Added regression tests that lock the default prompt payload to raw user input unless context is explicitly configured.
