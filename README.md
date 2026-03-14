@@ -83,6 +83,16 @@ Run tests with:
 uv run python -m pytest
 ```
 
+Install Playwright Chromium (required for `tests/e2e/test_chat_smoke.py`):
+```bash
+uv run playwright install chromium
+```
+
+Run the frontend smoke test only:
+```bash
+uv run python -m pytest tests/e2e -q
+```
+
 Run lint and type checks:
 ```bash
 uv run ruff check .
