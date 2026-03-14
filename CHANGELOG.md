@@ -2,6 +2,13 @@
 
 ## 2026-03-14
 
+### Improve Startup And Runtime Diagnostics
+
+- Added explicit startup diagnostics for required configuration and app asset checks.
+- Split liveness and readiness behavior with a dedicated readiness endpoint that reports failed checks.
+- Refined startup, request, and OpenAI-path logging to be more actionable and lower-noise for local debugging.
+- Added deterministic regression tests for startup failures, readiness states, and logging config parsing.
+
 ### Stabilize The Single-Chat Request/Response Path
 
 - Hardened OpenAI response handling for missing, blank, and malformed model content.

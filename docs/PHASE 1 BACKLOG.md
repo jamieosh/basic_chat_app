@@ -4,15 +4,6 @@ This backlog captures the work needed to complete the "Reliable Single-Chat Base
 Items are intentionally unnumbered so they can be reordered as priorities change.
 
 -- 
-## Improve Startup And Runtime Diagnostics
-
-Phase 1 should be easy to run and troubleshoot without deep system knowledge. This item focuses on clear startup checks and useful runtime signals so developers can quickly identify configuration or dependency problems. Better diagnostics reduce iteration friction and make the project more approachable as a forkable base.
-
-- Make startup failures explicit and actionable when required configuration is missing.
-- Improve readiness diagnostics beyond basic liveness behavior.
-- Refine logging clarity so local debugging is fast and low-noise.
-
--- 
 
 ## Keep Default Behavior Deterministic And Neutral
 

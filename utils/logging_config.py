@@ -1,15 +1,16 @@
 import logging
-import sys
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
+
 
 def setup_logging(
     default_level=logging.INFO,
     log_to_file=False,
     log_dir="logs",
     app_name="ai_chat",
-    component_levels=None
+    component_levels=None,
 ):
     """Set up logging configuration for the entire application
     
@@ -22,7 +23,7 @@ def setup_logging(
     """
     # Create formatter
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     
     # Configure root logger
@@ -62,45 +63,51 @@ def get_logger(name):
     """Get a logger for a specific component"""
     return logging.getLogger(name)
 
+
 def truncate_message(message, max_length=500):
     """Truncate a message to a maximum length for logging purposes"""
     if isinstance(message, str) and len(message) > max_length:
         return message[:max_length] + f"... [truncated, total length: {len(message)}]"
     return message
 
-# Initialize logging based on environment variables
+
+def _parse_log_level(level_name: str, *, default: int) -> int:
+    return getattr(logging, level_name.strip().upper(), default)
+
+
+def _parse_component_levels(component_levels_str: str) -> dict[str, int]:
+    component_levels: dict[str, int] = {}
+    if not component_levels_str.strip():
+        return component_levels
+
+    for component_level in component_levels_str.split(","):
+        if "=" not in component_level:
+            continue
+
+        component, level_name = component_level.split("=", 1)
+        component = component.strip()
+        if not component:
+            continue
+
+        level = getattr(logging, level_name.strip().upper(), None)
+        if level is not None:
+            component_levels[component] = level
+
+    return component_levels
+
+
 def init_logging():
-    # Default log level
-    default_level_name = os.getenv("LOG_LEVEL", "INFO")
-    default_level = getattr(logging, default_level_name, logging.INFO)
-    
-    # Component-specific log levels from environment variables
-    # Format: COMPONENT1=DEBUG,COMPONENT2=WARNING
-    component_levels_str = os.getenv("COMPONENT_LOG_LEVELS", "")
-    component_levels = {}
-    
-    if component_levels_str:
-        for component_level in component_levels_str.split(","):
-            if "=" in component_level:
-                component, level_name = component_level.split("=")
-                level = getattr(logging, level_name, None)
-                if level is not None:
-                    component_levels[component] = level
-    
-    # You can also hardcode specific component levels here
-    # component_levels.update({
-    #     "agent.openai": logging.DEBUG,
-    #     "api": logging.INFO
-    # })
-    
+    """Initialize logging based on environment variables."""
+    default_level = _parse_log_level(os.getenv("LOG_LEVEL", "INFO"), default=logging.INFO)
+    component_levels = _parse_component_levels(os.getenv("COMPONENT_LOG_LEVELS", ""))
     log_to_file = os.getenv("LOG_TO_FILE", "false").lower() == "true"
     log_dir = os.getenv("LOG_DIR", "logs")
     app_name = os.getenv("APP_NAME", "ai_chat")
-    
+
     setup_logging(
         default_level=default_level,
         log_to_file=log_to_file,
         log_dir=log_dir,
         app_name=app_name,
-        component_levels=component_levels
+        component_levels=component_levels,
     )

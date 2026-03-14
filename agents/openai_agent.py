@@ -2,7 +2,7 @@ import openai
 from openai.types.chat import ChatCompletionMessageParam
 
 from .base_agent import BaseAgent
-from utils.logging_config import get_logger, truncate_message
+from utils.logging_config import get_logger
 from utils.prompt_manager import PromptTemplateManager
 
 
@@ -50,11 +50,14 @@ class OpenAIAgent(BaseAgent):
             try:
                 self.prompt_manager.get_context_prompt(self.prompt_name)
             except FileNotFoundError:
-                self.logger.warning("No context prompt found for %s, will use only system prompt", self.prompt_name)
+                self.logger.warning(
+                    "openai_agent.context_prompt_missing prompt=%s fallback=system_only",
+                    self.prompt_name,
+                )
                 
-            self.logger.info("OpenAI agent initialized with model: %s, prompt: %s", model, self.prompt_name)
+            self.logger.info("openai_agent.initialized model=%s prompt=%s", model, self.prompt_name)
         except FileNotFoundError as e:
-            self.logger.critical("Failed to initialize OpenAI agent: %s", str(e))
+            self.logger.critical("openai_agent.initialization_failed detail=%s", str(e))
             raise
     
     @property
@@ -123,11 +126,10 @@ class OpenAIAgent(BaseAgent):
             ]
             
             # Log which prompt is being used
-            self.logger.info("Using prompt name: %s", self.prompt_name)
+            self.logger.debug("openai_agent.prompt_selected prompt=%s", self.prompt_name)
             
             try:
-                self.logger.info("Sending request to %s: %s", self.model, truncate_message(message))
-                self.logger.debug("Full message: %s", truncate_message(str(messages)))
+                self.logger.info("openai_agent.request_started model=%s message_chars=%s", self.model, len(message))
                 
                 # Call OpenAI API
                 response = self.client.chat.completions.create(
@@ -138,69 +140,73 @@ class OpenAIAgent(BaseAgent):
 
                 response_text = self._extract_response_text(response)
 
-                self.logger.info("Received response: %s", truncate_message(response_text))
+                self.logger.info(
+                    "openai_agent.request_succeeded model=%s response_chars=%s",
+                    self.model,
+                    len(response_text),
+                )
                 
                 return response_text
                 
             except openai.APITimeoutError as e:
-                self.logger.error("Timeout when calling OpenAI API: %s", str(e), exc_info=True)
+                self.logger.warning("openai_agent.timeout detail=%s", str(e))
                 raise
 
             except openai.APIConnectionError as e:
-                self.logger.error("Connection error when calling OpenAI API: %s", str(e), exc_info=True)
+                self.logger.warning("openai_agent.connection_error detail=%s", str(e))
                 raise
                 
             except openai.RateLimitError as e:
-                self.logger.error("Rate limit exceeded when calling OpenAI API: %s", str(e), exc_info=True)
+                self.logger.warning("openai_agent.rate_limited detail=%s", str(e))
                 raise
                 
             except openai.AuthenticationError as e:
-                self.logger.error("Authentication error when calling OpenAI API: %s", str(e), exc_info=True)
+                self.logger.warning("openai_agent.authentication_failed detail=%s", str(e))
                 raise
 
             except openai.BadRequestError as e:
-                self.logger.error("Bad request error when calling OpenAI API: %s", str(e), exc_info=True)
+                self.logger.warning("openai_agent.bad_request detail=%s", str(e))
                 raise
                 
             except openai.APIError as e:
-                self.logger.error("API error when calling OpenAI API: %s", str(e), exc_info=True)
+                self.logger.warning("openai_agent.api_error detail=%s", str(e))
                 raise
                 
             except Exception as e:
-                self.logger.error("Unexpected error when calling OpenAI API: %s", str(e), exc_info=True)
+                self.logger.error("openai_agent.unexpected_error detail=%s", str(e), exc_info=True)
                 raise
                 
         except FileNotFoundError as e:
-            self.logger.critical("Prompt template error: %s", str(e))
+            self.logger.critical("openai_agent.prompt_template_error detail=%s", str(e))
             raise
 
     def _extract_response_text(self, response) -> str:
         choices = getattr(response, "choices", None)
         if not choices:
             error_msg = "AI response contained no choices"
-            self.logger.error("%s for model %s", error_msg, self.model)
+            self.logger.error("openai_agent.empty_response detail=%s model=%s", error_msg, self.model)
             raise EmptyModelResponseError(error_msg)
 
         message = getattr(choices[0], "message", None)
         if message is None:
             error_msg = "AI response choice was missing a message"
-            self.logger.error("%s for model %s", error_msg, self.model)
+            self.logger.error("openai_agent.empty_response detail=%s model=%s", error_msg, self.model)
             raise EmptyModelResponseError(error_msg)
 
         response_text = getattr(message, "content", None)
         if response_text is None:
             error_msg = "AI response did not include any text content"
-            self.logger.error("%s for model %s", error_msg, self.model)
+            self.logger.error("openai_agent.empty_response detail=%s model=%s", error_msg, self.model)
             raise EmptyModelResponseError(error_msg)
 
         if not isinstance(response_text, str):
             error_msg = "AI response returned non-text content"
-            self.logger.error("%s for model %s", error_msg, self.model)
+            self.logger.error("openai_agent.empty_response detail=%s model=%s", error_msg, self.model)
             raise EmptyModelResponseError(error_msg)
 
         if not response_text.strip():
             error_msg = "AI response returned an empty text response"
-            self.logger.error("%s for model %s", error_msg, self.model)
+            self.logger.error("openai_agent.empty_response detail=%s model=%s", error_msg, self.model)
             raise EmptyModelResponseError(error_msg)
 
         return response_text

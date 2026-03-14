@@ -9,30 +9,23 @@ import openai
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from agents.openai_agent import EmptyModelResponseError, OpenAIAgent
+from utils.diagnostics import (
+    DiagnosticCheck,
+    StartupDiagnosticsError,
+    build_readiness_payload,
+    collect_startup_checks,
+    raise_for_failed_startup_checks,
+)
 from utils.html_formatter import format_response_as_html
-from utils.logging_config import get_logger, init_logging, truncate_message
+from utils.logging_config import get_logger, init_logging
 
 logger = get_logger("api")
 templates = Jinja2Templates(directory="templates")
-
-
-def _require_env_var(name: str) -> str:
-    """Return a required env var value or raise a deterministic startup error."""
-    value = os.getenv(name)
-    if value and value.strip():
-        return value
-
-    message = (
-        f"Missing required environment variable: {name}. "
-        "Set it in .env or the process environment before startup."
-    )
-    logger.critical(message)
-    raise RuntimeError(message)
 
 
 def _get_agent(request: Request) -> OpenAIAgent:
@@ -76,13 +69,62 @@ def _validate_message_input(message: str | None) -> str:
     return message
 
 
+def _set_startup_state(app: FastAPI, *, startup_complete: bool) -> None:
+    app.state.startup_complete = startup_complete
+
+
+def _readiness_status(app: FastAPI) -> tuple[int, dict[str, object]]:
+    return build_readiness_payload(
+        startup_complete=bool(getattr(app.state, "startup_complete", False)),
+        agent_initialized=hasattr(app.state, "agent"),
+    )
+
+
+def _log_known_chat_error(event: str, exc: Exception) -> None:
+    logger.warning("%s detail=%s", event, str(exc))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize dependencies at startup instead of import time."""
     load_dotenv()
     init_logging()
-    app.state.agent = OpenAIAgent(api_key=_require_env_var("OPENAI_API_KEY"))
-    yield
+    _set_startup_state(app, startup_complete=False)
+    logger.info("startup.begin")
+
+    startup_checks = collect_startup_checks()
+    try:
+        raise_for_failed_startup_checks(startup_checks)
+        app.state.agent = OpenAIAgent(api_key=os.environ["OPENAI_API_KEY"])
+    except StartupDiagnosticsError as exc:
+        for failure in exc.failures:
+            logger.critical("startup.failed check=%s detail=%s", failure.name, failure.detail)
+        raise
+    except Exception as exc:
+        logger.critical("startup.failed check=agent_initialization detail=%s", str(exc), exc_info=True)
+        raise StartupDiagnosticsError(
+            [
+                DiagnosticCheck(
+                    name="agent_initialization",
+                    ok=False,
+                    detail=f"Failed to initialize the OpenAI agent. {str(exc)}",
+                )
+            ]
+        ) from exc
+
+    _set_startup_state(app, startup_complete=True)
+    logger.info(
+        "startup.ready model=%s agent=%s",
+        app.state.agent.model_display_name,
+        app.state.agent.display_name,
+    )
+    try:
+        yield
+    finally:
+        _set_startup_state(app, startup_complete=False)
+        if hasattr(app.state, "agent"):
+            del app.state.agent
+        logger.info("startup.shutdown")
 
 
 def create_app() -> FastAPI:
@@ -96,12 +138,12 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.mount("/static", StaticFiles(directory="static"), name="static")
+    app.mount("/static", StaticFiles(directory="static", check_dir=False), name="static")
 
     @app.get("/", response_class=HTMLResponse)
     async def home(request: Request):
         """Render the home page."""
-        logger.info("Rendering home page")
+        logger.debug("home.render")
         agent = _get_agent(request)
         return templates.TemplateResponse(
             request,
@@ -117,30 +159,29 @@ def create_app() -> FastAPI:
     async def chat_htmx(request: Request, message: str | None = Form(None)):
         """Process a chat message and return the response as HTML."""
         timestamp = datetime.now().strftime("%I:%M %p")
-        logger.debug("Generated timestamp: %s", timestamp)
         agent = _get_agent(request)
 
         try:
             message = _validate_message_input(message)
-            logger.info(
-                "Received request at /send-message-htmx: %s",
-                truncate_message(message),
-            )
-            logger.debug("Request details: %s", request.headers)
+            logger.info("chat.request_received chars=%s", len(message))
 
             response = await asyncio.to_thread(agent.process_message, message)
             formatted_content = format_response_as_html(response)
             html_response = _render_bot_message(formatted_content, timestamp)
 
-            logger.info("Sending response: %s", truncate_message(response))
+            logger.info(
+                "chat.request_succeeded request_chars=%s response_chars=%s",
+                len(message),
+                len(response),
+            )
             return HTMLResponse(content=html_response)
 
         except ValueError as e:
-            logger.warning("Validation error: %s", str(e))
+            _log_known_chat_error("chat.validation_failed", e)
             return _render_error_message("Invalid Input", str(e), timestamp, 400)
 
         except openai.RateLimitError as e:
-            logger.error("Rate limit error: %s", str(e))
+            _log_known_chat_error("chat.rate_limited", e)
             return _render_error_message(
                 "Rate Limit Exceeded",
                 "The AI service is currently busy. Please try again in a few moments.",
@@ -149,7 +190,7 @@ def create_app() -> FastAPI:
             )
 
         except openai.AuthenticationError as e:
-            logger.error("Authentication error: %s", str(e))
+            _log_known_chat_error("chat.authentication_failed", e)
             return _render_error_message(
                 "Authentication Error",
                 "There's an issue with the AI service authentication. Please contact support.",
@@ -158,7 +199,7 @@ def create_app() -> FastAPI:
             )
 
         except openai.APITimeoutError as e:
-            logger.error("Timeout error: %s", str(e))
+            _log_known_chat_error("chat.timeout", e)
             return _render_error_message(
                 "Request Timeout",
                 "The AI service took too long to respond. Please try again.",
@@ -167,7 +208,7 @@ def create_app() -> FastAPI:
             )
 
         except openai.APIConnectionError as e:
-            logger.error("API connection error: %s", str(e))
+            _log_known_chat_error("chat.connection_error", e)
             return _render_error_message(
                 "Connection Error",
                 "Could not connect to the AI service. Please check your internet connection and try again.",
@@ -176,7 +217,7 @@ def create_app() -> FastAPI:
             )
 
         except openai.BadRequestError as e:
-            logger.error("Bad request error: %s", str(e))
+            _log_known_chat_error("chat.bad_request", e)
             return _render_error_message(
                 "AI Service Error",
                 "The AI service rejected the request. Please try again later.",
@@ -185,7 +226,7 @@ def create_app() -> FastAPI:
             )
 
         except openai.APIError as e:
-            logger.error("OpenAI API error: %s", str(e))
+            _log_known_chat_error("chat.api_error", e)
             return _render_error_message(
                 "AI Service Error",
                 "The AI service encountered an error. Please try again later.",
@@ -194,7 +235,7 @@ def create_app() -> FastAPI:
             )
 
         except EmptyModelResponseError as e:
-            logger.error("OpenAI returned an empty message response: %s", str(e))
+            _log_known_chat_error("chat.empty_model_response", e)
             return _render_error_message(
                 "AI Service Error",
                 "The AI service returned an empty response. Please try again later.",
@@ -203,7 +244,7 @@ def create_app() -> FastAPI:
             )
 
         except Exception as e:
-            logger.error("Error processing message: %s", str(e), exc_info=True)
+            logger.error("chat.unexpected_error detail=%s", str(e), exc_info=True)
             return _render_error_message(
                 "Unexpected Error",
                 "Sorry, something went wrong. Please try again.",
@@ -214,8 +255,13 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health_check():
         """Health check endpoint."""
-        logger.debug("Health check requested")
         return {"status": "ok"}
+
+    @app.get("/health/ready")
+    async def readiness_check():
+        """Readiness endpoint for startup/runtime diagnostics."""
+        status_code, payload = _readiness_status(app)
+        return JSONResponse(status_code=status_code, content=payload)
 
     return app
 

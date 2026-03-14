@@ -16,7 +16,7 @@ class PromptTemplateManager:
             self.logger.critical(error_msg)
             raise FileNotFoundError(error_msg)
         else:
-            self.logger.info("Templates directory exists: %s", templates_dir)
+            self.logger.debug("prompt_manager.templates_dir_found path=%s", templates_dir)
         
         # Check if the required directories for this agent type exist
         agent_dir = os.path.join(templates_dir, agent_name)        
@@ -25,7 +25,7 @@ class PromptTemplateManager:
             self.logger.critical(error_msg)
             raise FileNotFoundError(error_msg)
         else:
-            self.logger.info("Templates directory for agent type '%s' exists: %s", agent_name, agent_dir)
+            self.logger.debug("prompt_manager.agent_dir_found agent=%s path=%s", agent_name, agent_dir)
         
         # Initialize Jinja2 environment
         self.j2env = Environment(
@@ -34,8 +34,11 @@ class PromptTemplateManager:
             lstrip_blocks=True
         )
         
-        self.logger.info("PromptTemplateManager initialized for agent type '%s' with templates directory: %s", 
-                         agent_name, templates_dir)
+        self.logger.debug(
+            "prompt_manager.initialized agent=%s templates_dir=%s",
+            agent_name,
+            templates_dir,
+        )
     
     def _render_template(self, template_path, **variables):
         """Render a template with the given variables

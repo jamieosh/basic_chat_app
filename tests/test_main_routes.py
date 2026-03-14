@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import main
 import httpx
 import openai
@@ -5,6 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agents.openai_agent import EmptyModelResponseError
+from utils import diagnostics
+from utils.diagnostics import StartupDiagnosticsError
 
 
 def test_health_check(client):
@@ -12,6 +16,57 @@ def test_health_check(client):
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_readiness_check_reports_ready_state(client):
+    response = client.get("/health/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "checks": [
+            {
+                "name": "startup_completed",
+                "status": "ok",
+                "detail": "Application startup completed.",
+            },
+            {
+                "name": "agent_initialized",
+                "status": "ok",
+                "detail": "Chat agent is initialized.",
+            },
+        ],
+    }
+
+
+def test_readiness_check_returns_503_when_agent_is_missing(client):
+    del client.app.state.agent
+
+    response = client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready",
+        "checks": [
+            {
+                "name": "startup_completed",
+                "status": "ok",
+                "detail": "Application startup completed.",
+            },
+            {
+                "name": "agent_initialized",
+                "status": "failed",
+                "detail": "Chat agent is not available to process messages.",
+            },
+        ],
+        "failed_checks": [
+            {
+                "name": "agent_initialized",
+                "status": "failed",
+                "detail": "Chat agent is not available to process messages.",
+            }
+        ],
+    }
 
 
 def test_home_renders_chat_header(client):
@@ -232,7 +287,42 @@ def test_create_app_fails_with_clear_message_when_openai_key_missing(monkeypatch
     monkeypatch.setattr(main, "OpenAIAgent", NeverCalledAgent)
 
     app = main.create_app()
-    expected = "Missing required environment variable: OPENAI_API_KEY"
-    with pytest.raises(RuntimeError, match=expected):
+    expected = (
+        "Startup diagnostics failed: OPENAI_API_KEY: "
+        "Missing required environment variable OPENAI_API_KEY"
+    )
+    with pytest.raises(StartupDiagnosticsError, match=expected):
+        with TestClient(app):
+            pass
+
+
+def test_create_app_fails_with_clear_message_when_system_prompt_template_missing(monkeypatch):
+    def fake_load_dotenv():
+        return None
+
+    def fake_init_logging():
+        return None
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "load_dotenv", fake_load_dotenv)
+    monkeypatch.setattr(main, "init_logging", fake_init_logging)
+    monkeypatch.setattr(
+        diagnostics,
+        "REQUIRED_STARTUP_PATHS",
+        [
+            (
+                "system_prompt_template",
+                Path("templates/prompts/openai/missing_system.j2"),
+                "Restore templates/prompts/openai/system_default.j2 or update the configured prompt name.",
+            )
+        ],
+    )
+
+    app = main.create_app()
+    expected = (
+        "Startup diagnostics failed: system_prompt_template: "
+        "Missing required path: templates/prompts/openai/missing_system.j2"
+    )
+    with pytest.raises(StartupDiagnosticsError, match=expected):
         with TestClient(app):
             pass
