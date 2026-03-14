@@ -1,18 +1,7 @@
 # Phase 1 Backlog
 
-This backlog captures the work needed to complete the "Reliable Single-Chat Baseline" phase.  
+This backlog captures the remaining work needed to complete the "Reliable Single-Chat Baseline" phase.  
 Items are intentionally unnumbered so they can be reordered as priorities change.
-
--- 
-
-## Completed: Strengthen Baseline Request And Failure UX
-
-Reliable single-chat behavior depends on the browser experience as well as the backend path. Phase 1 should make the request cycle predictable under normal use and common failure conditions, so the app feels stable even before broader chat features or streaming exist.
-
-- Duplicate submissions are prevented while a request is already in flight.
-- Loading, error, and service-unavailable states are explicit in the chat UI, with the default loading state kept intentionally minimal.
-- The single-chat flow behaves predictably when the backend is not ready or returns an error.
-- Focused frontend request/failure coverage exists for the most important baseline behaviors.
 
 -- 
 
@@ -36,3 +25,16 @@ Phase 1 completion should be obvious to new contributors and fork maintainers. T
 - Clarify local setup, runtime assumptions, and current security posture for forks.
 - Make it explicit that authentication, multi-chat continuity, and broader runtime abstraction are later-phase concerns.
 - Clarify where to change prompts, model wiring, and chat UI behavior safely.
+
+-- 
+
+## Recently Completed
+
+### Strengthen Baseline Request And Failure UX
+
+Reliable single-chat behavior depends on the browser experience as well as the backend path. Phase 1 should make the request cycle predictable under normal use and common failure conditions, so the app feels stable even before broader chat features or streaming exist.
+
+- Duplicate submissions are prevented while a request is already in flight.
+- Loading, error, and service-unavailable states are explicit in the chat UI, with the default loading state kept intentionally minimal.
+- The single-chat flow behaves predictably when the backend is not ready or returns an error.
+- Focused frontend request/failure coverage exists for the most important baseline behaviors.
