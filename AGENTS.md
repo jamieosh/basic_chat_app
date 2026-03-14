@@ -74,7 +74,6 @@ Current stage:
 
 ## Known Gaps (Important)
 
-- Error handling needs cleanup in OpenAI exception branches.
 - No auth, persistence, rate controls, or streaming response support.
 
 ## Guidance For Future Contributors
