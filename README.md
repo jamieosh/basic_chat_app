@@ -1,19 +1,30 @@
-# AI Chat Application
+# Python-First LLM Chat Workbench
 
-A modern, responsive chat application built with Python FastAPI and HTMX that provides an interactive interface for conversing with AI models.
+A lightweight FastAPI + HTMX project for quickly experimenting with LLM chat behavior in Python.
 
-## Features
+This repository is intentionally a workbench, not a full-featured production chat platform. It is designed to be usable out of the box while staying easy to fork and extend.
 
-- 🚀 Real-time chat interface with AI
-- 💬 Multi-line message input with auto-resize
-- 🎨 Modern, responsive UI with Tailwind CSS
-- ⚡ Fast, lightweight interactions using HTMX
-- 📱 Mobile-friendly design
-- 🔄 Smooth animations and typing indicators
-- 🎯 Error handling and rate limiting
-- 📝 Code block formatting support
-- ⏰ Message timestamps
-- 🔧 Configurable system prompts and context
+## Vision And Roadmap
+
+- Vision charter: `docs/VISION.md`
+- Phase model: `docs/PHASES.md`
+
+Those documents define the long-term direction and maturity phases. This README focuses on current usage and contributor workflow.
+
+## Current Capability (Today)
+
+- Server-rendered web chat UI with HTMX interactions.
+- Single-turn request/response chat flow.
+- OpenAI-backed agent implementation (`gpt-4o-mini` by default).
+- Prompt-template-driven system and user prompt construction.
+- Safe HTML rendering with fenced code block formatting.
+- Responsive frontend suitable for desktop and mobile.
+
+## Near-Term Product Shape
+
+- Keep the core simple and predictable.
+- Maintain a Python-first, minimal-JavaScript approach.
+- Preserve obvious extension seams for model, memory, and tool experimentation.
 
 ## Setup
 
@@ -45,7 +56,6 @@ The application will be available at `http://localhost:8000`.
 - Python 3.13+
 - FastAPI
 - HTMX
-- Tailwind CSS
 - OpenAI Python Client
 - Jinja2
 - python-dotenv
@@ -117,10 +127,11 @@ uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 
 ### Best Practices
 
-- Keep the single responsibility principle in mind
-- Add appropriate logging for debugging
-- Follow the established error handling patterns
-- Write clear documentation for new features
+- Keep structure and APIs straightforward.
+- Prefer small, localized changes over broad rewrites.
+- Follow established error handling and logging patterns.
+- Add or update tests with behavior changes.
+- Keep docs aligned with `docs/VISION.md` and `docs/PHASES.md`.
 
 ## License
 
