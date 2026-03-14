@@ -6,7 +6,7 @@ This phase establishes the core promise of the project: a developer can clone, r
 
 ### 2. Multi-Chat Continuity And User-Linked Chat Lifecycle
 
-This phase introduces practical conversation management by adding multiple chats tied to a user context. Users can start new chats, return to old ones, and manage chat history in a way that supports real workflow continuity. The goal is to mature usefulness without adding unnecessary complexity, preserving the same out-of-box usability while making the app a more realistic base for product experimentation.
+This phase introduces practical conversation management by adding multiple chats tied to a user context. It also introduces a baseline user concept and a default authentication implementation so chat ownership and lifecycle behavior can be modeled coherently from the start. Users can start new chats, return to old ones, and manage chat history in a way that supports real workflow continuity. The goal is to mature usefulness without adding unnecessary complexity, preserving the same out-of-box usability while making the app a more realistic base for product experimentation.
 
 ### 3. Pluggable Memory And Tool Capability Maturation
 
