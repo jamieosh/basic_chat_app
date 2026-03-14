@@ -6,8 +6,8 @@ This repository is intentionally a workbench, not a full-featured production cha
 
 ## Vision And Roadmap
 
-- Vision charter: `docs/VISION.md`
-- Phase model: `docs/PHASES.md`
+- Vision charter: `plans/VISION.md`
+- Phase model: `plans/PHASES.md`
 
 Those documents define the long-term direction and maturity phases. This README focuses on current usage and contributor workflow.
 
@@ -140,7 +140,7 @@ uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 - Prefer small, localized changes over broad rewrites.
 - Follow established error handling and logging patterns.
 - Add or update tests with behavior changes.
-- Keep docs aligned with `docs/VISION.md` and `docs/PHASES.md`.
+- Keep docs aligned with `plans/VISION.md` and `plans/PHASES.md`.
 
 ## License
 
