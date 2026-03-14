@@ -5,6 +5,11 @@ from .base_agent import BaseAgent
 from utils.logging_config import get_logger, truncate_message
 from utils.prompt_manager import PromptTemplateManager
 
+
+class EmptyModelResponseError(RuntimeError):
+    """Raised when the model response does not include text content."""
+
+
 class OpenAIAgent(BaseAgent):
     """Agent that uses OpenAI's API to process messages"""
     
@@ -133,6 +138,11 @@ class OpenAIAgent(BaseAgent):
                 
                 # Extract response text
                 response_text = response.choices[0].message.content
+                if response_text is None:
+                    error_msg = "AI response did not include any text content"
+                    self.logger.error("%s for model %s", error_msg, self.model)
+                    raise EmptyModelResponseError(error_msg)
+
                 self.logger.info("Received response: %s", truncate_message(response_text))
                 
                 return response_text

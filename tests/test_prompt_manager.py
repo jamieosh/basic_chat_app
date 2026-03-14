@@ -1,4 +1,5 @@
 import pytest
+from jinja2 import TemplateSyntaxError
 
 from utils.prompt_manager import PromptTemplateManager
 
@@ -41,6 +42,30 @@ def test_missing_context_prompt_raises_file_not_found():
 
     with pytest.raises(FileNotFoundError):
         manager.get_context_prompt("does_not_exist")
+
+
+def test_system_prompt_surfaces_template_render_errors(tmp_path):
+    templates_dir = tmp_path / "templates" / "prompts"
+    agent_dir = templates_dir / "openai"
+    agent_dir.mkdir(parents=True)
+    (agent_dir / "system_broken.j2").write_text("{% if personality %}", encoding="utf-8")
+
+    manager = PromptTemplateManager(agent_name="openai", templates_dir=str(templates_dir))
+
+    with pytest.raises(TemplateSyntaxError):
+        manager.get_system_prompt("broken", personality="direct")
+
+
+def test_context_prompt_surfaces_template_render_errors(tmp_path):
+    templates_dir = tmp_path / "templates" / "prompts"
+    agent_dir = templates_dir / "openai"
+    agent_dir.mkdir(parents=True)
+    (agent_dir / "user_broken.j2").write_text("{% if user_preferences %}", encoding="utf-8")
+
+    manager = PromptTemplateManager(agent_name="openai", templates_dir=str(templates_dir))
+
+    with pytest.raises(TemplateSyntaxError):
+        manager.get_context_prompt("broken", user_preferences="short replies")
 
 
 def test_missing_templates_directory_raises_file_not_found(tmp_path):

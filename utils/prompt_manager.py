@@ -1,5 +1,5 @@
 import os
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 from utils.logging_config import get_logger
 
 class PromptTemplateManager:
@@ -75,12 +75,14 @@ class PromptTemplateManager:
         template_path = f"prompts/{self.agent_name}/system_{prompt_name}.j2"
         try:
             return self._render_template(template_path, **variables)
-        except Exception as e:
+        except TemplateNotFound as e:
             self.logger.critical(
                 "System prompt %s not found for %s: %s",
                 prompt_name, self.agent_name, str(e)
             )
-            raise FileNotFoundError(f"System prompt '{prompt_name}' not found for agent type '{self.agent_name}'")
+            raise FileNotFoundError(
+                f"System prompt '{prompt_name}' not found for agent type '{self.agent_name}'"
+            ) from e
     
     def get_context_prompt(self, prompt_name="default", **variables):
         """Get a context prompt
@@ -99,10 +101,12 @@ class PromptTemplateManager:
         template_path = f"prompts/{self.agent_name}/user_{prompt_name}.j2"
         try:
             return self._render_template(template_path, **variables)
-        except Exception as e:
+        except TemplateNotFound as e:
             self.logger.critical(
                 "Context prompt %s not found for %s: %s",
                 prompt_name, self.agent_name, str(e)
             )
-            raise FileNotFoundError(f"Context prompt '{prompt_name}' not found for agent type '{self.agent_name}'")
+            raise FileNotFoundError(
+                f"Context prompt '{prompt_name}' not found for agent type '{self.agent_name}'"
+            ) from e
     

@@ -4,6 +4,8 @@ import openai
 import pytest
 from fastapi.testclient import TestClient
 
+from agents.openai_agent import EmptyModelResponseError
+
 
 def test_health_check(client):
     response = client.get("/health")
@@ -31,11 +33,38 @@ def test_send_message_returns_bot_message_html(client, monkeypatch):
     assert "Hello from test" in response.text
 
 
+def test_send_message_offloads_blocking_agent_call_from_event_loop(client, monkeypatch):
+    captured = {}
+
+    def fake_process_message(raw_message):
+        captured["processed_message"] = raw_message
+        return "Hello from thread"
+
+    async def fake_to_thread(func, *args, **kwargs):
+        captured["func"] = func
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(client.app.state.agent, "process_message", fake_process_message)
+    monkeypatch.setattr(main.asyncio, "to_thread", fake_to_thread)
+
+    response = client.post("/send-message-htmx", data={"message": "Hi"})
+
+    assert response.status_code == 200
+    assert captured["func"] is fake_process_message
+    assert captured["args"] == ("Hi",)
+    assert captured["kwargs"] == {}
+    assert captured["processed_message"] == "Hi"
+    assert "Hello from thread" in response.text
+
+
 def test_send_message_rejects_blank_messages(client):
     response = client.post("/send-message-htmx", data={"message": "   "})
 
     assert response.status_code == 400
     assert "Invalid Input" in response.text
+    assert "<p>" not in response.text
 
 
 def test_send_message_requires_message_field(client):
@@ -108,6 +137,18 @@ def test_send_message_handles_api_timeout_error(client, monkeypatch):
 
     assert result.status_code == 504
     assert "Request Timeout" in result.text
+
+
+def test_send_message_handles_empty_model_response(client, monkeypatch):
+    def raise_empty_model_response(_msg):
+        raise EmptyModelResponseError("AI response did not include any text content")
+
+    monkeypatch.setattr(client.app.state.agent, "process_message", raise_empty_model_response)
+    result = client.post("/send-message-htmx", data={"message": "Hi"})
+
+    assert result.status_code == 502
+    assert "AI Service Error" in result.text
+    assert "empty response" in result.text
 
 
 def test_send_message_handles_runtime_error_without_except_typeerror(client, monkeypatch):

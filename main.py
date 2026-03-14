@@ -1,3 +1,4 @@
+import asyncio
 import html
 import os
 from contextlib import asynccontextmanager
@@ -11,7 +12,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from agents.openai_agent import OpenAIAgent
+from agents.openai_agent import EmptyModelResponseError, OpenAIAgent
 from utils.html_formatter import format_response_as_html
 from utils.logging_config import get_logger, init_logging, truncate_message
 
@@ -93,7 +94,7 @@ def create_app() -> FastAPI:
             )
             logger.debug("Request details: %s", request.headers)
 
-            response = agent.process_message(message)
+            response = await asyncio.to_thread(agent.process_message, message)
             formatted_content = await format_response_as_html(response)
 
             html_response = f"""
@@ -113,10 +114,8 @@ def create_app() -> FastAPI:
             error_html = f"""
             <div class="message bot-message error-message">
                 <div class="message-content">
-                    <p>
-                        <div class="font-bold">Invalid Input</div>
-                        <div>{html.escape(str(e))}</div>
-                    </p>
+                    <div class="font-bold">Invalid Input</div>
+                    <div>{html.escape(str(e))}</div>
                     <div class="message-timestamp">{timestamp}</div>
                 </div>
             </div>
@@ -187,6 +186,19 @@ def create_app() -> FastAPI:
             </div>
             """
             return HTMLResponse(content=error_html, status_code=500)
+
+        except EmptyModelResponseError as e:
+            logger.error("OpenAI returned an empty message response: %s", str(e))
+            error_html = f"""
+            <div class="message bot-message error-message">
+                <div class="message-content">
+                    <div class="font-bold">AI Service Error</div>
+                    <div>The AI service returned an empty response. Please try again later.</div>
+                </div>
+                <div class="message-timestamp">{timestamp}</div>
+            </div>
+            """
+            return HTMLResponse(content=error_html, status_code=502)
 
         except Exception as e:
             logger.error("Error processing message: %s", str(e), exc_info=True)

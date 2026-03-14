@@ -4,7 +4,7 @@ import httpx
 import openai
 import pytest
 
-from agents.openai_agent import OpenAIAgent
+from agents.openai_agent import EmptyModelResponseError, OpenAIAgent
 
 
 def test_process_message_builds_prompt_and_returns_model_text():
@@ -78,6 +78,24 @@ def test_process_message_without_context_prompt_uses_raw_user_message():
 
     assert reply == "No context reply"
     assert captured["messages"][1]["content"] == "Just this message"
+
+
+def test_process_message_raises_when_model_content_is_missing():
+    agent = OpenAIAgent(api_key="test-key")
+
+    def fake_create(**_kwargs):
+        return types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content=None))]
+        )
+
+    agent.client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=fake_create)
+        )
+    )
+
+    with pytest.raises(EmptyModelResponseError, match="did not include any text content"):
+        agent.process_message("Hello there")
 
 
 def _build_agent_that_raises(error):
