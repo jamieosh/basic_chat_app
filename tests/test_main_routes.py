@@ -1,6 +1,7 @@
 import main
 import httpx
 import openai
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -149,3 +150,26 @@ def test_create_app_defers_logging_and_agent_init_until_startup(monkeypatch):
     with TestClient(app) as startup_client:
         assert calls == {"init_logging": 1, "agent_ctor": 1}
         assert startup_client.app.state.agent.display_name == "Fake Bot"
+
+
+def test_create_app_fails_with_clear_message_when_openai_key_missing(monkeypatch):
+    def fake_load_dotenv():
+        return None
+
+    def fake_init_logging():
+        return None
+
+    class NeverCalledAgent:
+        def __init__(self, api_key):
+            raise AssertionError("OpenAIAgent should not be constructed without OPENAI_API_KEY")
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(main, "load_dotenv", fake_load_dotenv)
+    monkeypatch.setattr(main, "init_logging", fake_init_logging)
+    monkeypatch.setattr(main, "OpenAIAgent", NeverCalledAgent)
+
+    app = main.create_app()
+    expected = "Missing required environment variable: OPENAI_API_KEY"
+    with pytest.raises(RuntimeError, match=expected):
+        with TestClient(app):
+            pass

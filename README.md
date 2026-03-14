@@ -76,7 +76,6 @@ basic_chat_app/
 
 Dependency source of truth:
 - `pyproject.toml` + `uv.lock`
-- `requirements.txt` is generated (exported) for compatibility only
 
 Run tests with:
 ```bash

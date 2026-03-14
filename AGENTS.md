@@ -48,11 +48,9 @@ Current stage:
 - Source of truth for dependencies is:
   - `pyproject.toml` (declared constraints)
   - `uv.lock` (resolved/pinned graph)
-- `requirements.txt` is generated output for compatibility and should not be edited by hand.
 - If dependencies change:
-  - update via `uv add`/`uv remove` (which updates `pyproject.toml` and `uv.lock`)
-  - regenerate `requirements.txt` from `uv.lock`:
-    - `uv export --no-dev --format requirements-txt --no-hashes > requirements.txt`
+  - update via `uv add`/`uv remove` (which updates `pyproject.toml` and `uv.lock`).
+  - keep `uv.lock` committed and use `uv sync --frozen` in CI/local verification.
 
 ## Run Locally
 
@@ -104,9 +102,20 @@ Current tests are located in `tests/` and use `pytest`.
   - Verifies template rendering and missing-template handling.
 - `tests/test_html_formatter.py`
   - Verifies escaping and fenced code-block formatting.
+- `tests/e2e/test_chat_smoke.py`
+  - Browser smoke test for page load and message send flow (Playwright).
 
 Run tests with:
 - `uv run python -m pytest`
+- E2E prerequisite:
+  - `uv run playwright install chromium`
+
+## CI Quality Gates
+
+CI runs and enforces all of the following:
+- `ruff` linting
+- `mypy` type checking
+- `pytest` (unit + e2e tests)
 
 ## Test Creation Rules
 

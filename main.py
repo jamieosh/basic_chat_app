@@ -19,6 +19,20 @@ logger = get_logger("api")
 templates = Jinja2Templates(directory="templates")
 
 
+def _require_env_var(name: str) -> str:
+    """Return a required env var value or raise a deterministic startup error."""
+    value = os.getenv(name)
+    if value and value.strip():
+        return value
+
+    message = (
+        f"Missing required environment variable: {name}. "
+        "Set it in .env or the process environment before startup."
+    )
+    logger.critical(message)
+    raise RuntimeError(message)
+
+
 def _get_agent(request: Request) -> OpenAIAgent:
     """Read the request-scoped agent initialized at startup."""
     try:
@@ -33,7 +47,7 @@ async def lifespan(app: FastAPI):
     """Initialize dependencies at startup instead of import time."""
     load_dotenv()
     init_logging()
-    app.state.agent = OpenAIAgent(api_key=os.getenv("OPENAI_API_KEY"))
+    app.state.agent = OpenAIAgent(api_key=_require_env_var("OPENAI_API_KEY"))
     yield
 
 
