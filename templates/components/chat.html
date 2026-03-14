@@ -9,21 +9,40 @@
             </div>
         </div>
     </div>
+
+    {% if not chat_available %}
+    <div
+        id="chat-service-status"
+        class="chat-status-banner"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+    >
+        <div class="chat-status-title">{{ service_status_title }}</div>
+        <p>{{ service_status_message }}</p>
+    </div>
+    {% endif %}
     
     <!-- Input area - fixed at bottom -->
     <div class="border-t bg-gray-50">
-        <form id="chat-form" hx-post="/send-message-htmx" 
-              hx-target="#chat-box" 
+        <form id="chat-form" hx-post="/send-message-htmx"
+              hx-target="#chat-box"
               hx-swap="beforeend"
+              data-chat-available="{{ 'true' if chat_available else 'false' }}"
+              data-service-unavailable-message="{{ service_status_message }}"
               class="flex items-end gap-2 p-2 sm:p-4">
-            <textarea 
-                   id="message-input" 
-                   name="message" 
-                   placeholder="Type your message..." 
+            <textarea
+                   id="message-input"
+                   name="message"
+                   placeholder="Type your message..."
                    required
                    rows="1"
+                   {% if not chat_available %}disabled{% endif %}
+                   aria-disabled="{{ 'false' if chat_available else 'true' }}"
                    class="chat-input flex-1 p-2 sm:p-3 border focus:outline-none focus:ring-1 focus:ring-gray-400 text-sm sm:text-base resize-none overflow-y-auto max-h-[240px]"></textarea>
-            <button id="send-button" type="submit" 
+            <button id="send-button" type="submit"
+                    {% if not chat_available %}disabled{% endif %}
+                    aria-disabled="{{ 'false' if chat_available else 'true' }}"
                     class="chat-submit bg-gray-600 text-white px-3 sm:px-4 hover:bg-gray-700 transition-colors flex-shrink-0 text-sm sm:text-base">
                 <span class="hidden sm:inline">Send</span>
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:hidden" viewBox="0 0 20 20" fill="currentColor">
@@ -31,5 +50,12 @@
                 </svg>
             </button>
         </form>
+        <div
+            id="chat-request-status"
+            class="chat-request-status"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+        ></div>
     </div>
-</div> 
+</div>

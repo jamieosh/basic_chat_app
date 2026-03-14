@@ -111,6 +111,19 @@ def test_home_renders_chat_header(client):
     assert client.app.state.agent.model_display_name in response.text
 
 
+def test_home_renders_unavailable_shell_when_agent_is_missing(client):
+    del client.app.state.agent
+
+    response = client.get("/")
+
+    assert response.status_code == 503
+    assert "Chat unavailable" in response.text
+    assert "The chat service is temporarily unavailable. Please try again shortly." in response.text
+    assert 'data-chat-available="false"' in response.text
+    assert 'id="message-input"' in response.text
+    assert 'id="send-button"' in response.text
+
+
 def test_send_message_returns_bot_message_html(client, monkeypatch):
     monkeypatch.setattr(client.app.state.agent, "process_message", lambda _msg: "Hello from test")
 
@@ -120,6 +133,28 @@ def test_send_message_returns_bot_message_html(client, monkeypatch):
     assert "bot-message" in response.text
     assert "Hello from test" in response.text
     assert 'class="message-body"' in response.text
+
+
+def test_send_message_returns_service_unavailable_html_when_agent_is_missing(client):
+    del client.app.state.agent
+
+    response = client.post("/send-message-htmx", data={"message": "Hi"})
+
+    assert response.status_code == 503
+    assert "Service Unavailable" in response.text
+    assert "The chat service is temporarily unavailable. Please try again shortly." in response.text
+    assert "error-message" in response.text
+
+
+def test_send_message_returns_startup_message_when_startup_is_incomplete(client):
+    client.app.state.startup_complete = False
+
+    response = client.post("/send-message-htmx", data={"message": "Hi"})
+
+    assert response.status_code == 503
+    assert "Service Unavailable" in response.text
+    assert "The chat service is still starting up. Please try again shortly." in response.text
+    assert "error-message" in response.text
 
 
 def test_send_message_offloads_blocking_agent_call_from_event_loop(client, monkeypatch):

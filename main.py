@@ -46,7 +46,7 @@ def _render_bot_message(body_html: str, timestamp: str, title: str | None = None
     if is_error:
         message_classes += " error-message"
 
-    title_html = f'<div class="font-bold">{html.escape(title)}</div>' if title else ""
+    title_html = f'<div class="message-title">{html.escape(title)}</div>' if title else ""
     return dedent(
         f"""
         <div class="{message_classes}">
@@ -75,6 +75,16 @@ def _validate_message_input(message: str | None) -> str:
 
 def _set_startup_state(app: FastAPI, *, startup_complete: bool) -> None:
     app.state.startup_complete = startup_complete
+
+
+def _is_chat_service_available(app: FastAPI) -> bool:
+    return bool(getattr(app.state, "startup_complete", False)) and hasattr(app.state, "agent")
+
+
+def _chat_service_unavailable_detail(app: FastAPI) -> str:
+    if not bool(getattr(app.state, "startup_complete", False)):
+        return "The chat service is still starting up. Please try again shortly."
+    return "The chat service is temporarily unavailable. Please try again shortly."
 
 
 def _readiness_status(app: FastAPI) -> tuple[int, dict[str, object]]:
@@ -155,21 +165,47 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     async def home(request: Request):
         """Render the home page."""
         logger.debug("home.render")
-        agent = _get_agent(request)
+        chat_available = _is_chat_service_available(request.app)
+        service_status_message = _chat_service_unavailable_detail(request.app)
+        display_name = "AI Chat"
+        model_display_name = "Unavailable"
+
+        if chat_available:
+            agent = _get_agent(request)
+            display_name = agent.display_name
+            model_display_name = agent.model_display_name
+        else:
+            logger.warning("home.service_unavailable detail=%s", service_status_message)
+
         return templates.TemplateResponse(
             request,
             "index.html",
             {
                 "request": request,
-                "model_display_name": agent.model_display_name,
-                "display_name": agent.display_name,
+                "model_display_name": model_display_name,
+                "display_name": display_name,
+                "chat_available": chat_available,
+                "service_status_title": "Chat unavailable",
+                "service_status_message": service_status_message,
             },
+            status_code=200 if chat_available else 503,
         )
 
     @app.post("/send-message-htmx", response_class=HTMLResponse)
     async def chat_htmx(request: Request, message: str | None = Form(None)):
         """Process a chat message and return the response as HTML."""
         timestamp = datetime.now().strftime("%I:%M %p")
+
+        if not _is_chat_service_available(request.app):
+            service_status_message = _chat_service_unavailable_detail(request.app)
+            logger.warning("chat.service_unavailable detail=%s", service_status_message)
+            return _render_error_message(
+                "Service Unavailable",
+                service_status_message,
+                timestamp,
+                503,
+            )
+
         agent = _get_agent(request)
 
         try:

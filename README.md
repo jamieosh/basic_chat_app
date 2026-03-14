@@ -15,6 +15,8 @@ Those documents define the long-term direction and maturity phases. This README 
 
 - Server-rendered web chat UI with HTMX interactions.
 - Single-turn request/response chat flow.
+- In-flight request locking so duplicate submissions are ignored while a response is pending.
+- Inline failure handling for validation, service-unavailable, and transport-error states.
 - OpenAI-backed agent implementation (`gpt-5-mini` by default).
 - Prompt-template-driven system and user prompt construction.
 - Neutral `AI Chat` defaults with no implicit domain context or memory.
@@ -29,6 +31,7 @@ The portability and configuration baseline is now part of the current default be
 - Runtime behavior is configurable through environment variables instead of route-level or agent-level constants.
 - Default CORS behavior matches the current no-auth posture: wildcard origins are allowed, but credentials stay disabled unless you opt into explicit origins.
 - Prompt/template selection, OpenAI model choice, timeout, and compatible temperature settings can be changed without modifying application code.
+- The browser chat flow prevents duplicate sends, uses a minimal typing indicator during normal requests, and renders degraded-service states inline when the backend is unavailable or a request fails.
 
 ## Near-Term Product Shape
 
@@ -167,6 +170,7 @@ For the default no-auth baseline, keep `CORS_ALLOW_CREDENTIALS=false`. If you en
 - The default system prompt is generic.
 - The default user-context prompt remains available as a customization seam, but contributes nothing unless you explicitly add context variables or edit the template.
 - The app does not keep multi-turn memory in Phase 1; each request is handled independently.
+- The default request UX stays visually quiet on success: only the typing dots appear while a response is in flight, and the footer status area is reserved for validation or failure messaging.
 
 ### Best Practices
 

@@ -5,14 +5,14 @@ Items are intentionally unnumbered so they can be reordered as priorities change
 
 -- 
 
-## Strengthen Baseline Request And Failure UX
+## Completed: Strengthen Baseline Request And Failure UX
 
 Reliable single-chat behavior depends on the browser experience as well as the backend path. Phase 1 should make the request cycle predictable under normal use and common failure conditions, so the app feels stable even before broader chat features or streaming exist.
 
-- Prevent duplicate submissions while a request is already in flight.
-- Make loading, error, and service-unavailable states explicit in the chat UI.
-- Ensure the single-chat flow behaves predictably when the backend is not ready or returns an error.
-- Add focused coverage for the most important frontend request/failure behaviors.
+- Duplicate submissions are prevented while a request is already in flight.
+- Loading, error, and service-unavailable states are explicit in the chat UI, with the default loading state kept intentionally minimal.
+- The single-chat flow behaves predictably when the backend is not ready or returns an error.
+- Focused frontend request/failure coverage exists for the most important baseline behaviors.
 
 -- 
 

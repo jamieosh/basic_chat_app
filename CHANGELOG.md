@@ -2,6 +2,13 @@
 
 ## 2026-03-14
 
+### Strengthen Baseline Request And Failure UX
+
+- Prevented duplicate chat submissions while an HTMX request is already in flight.
+- Simplified the normal loading state to the existing typing dots while keeping footer status messaging for validation and failure conditions.
+- Made unavailable-agent and startup-incomplete chat requests render consistent inline HTML error states instead of falling back to raw framework errors.
+- Added focused route and Playwright coverage for duplicate-submit prevention, server-side failure rendering, degraded home-page state, and transport-error fallback behavior.
+
 ### Expand Regression Coverage For Baseline Reliability
 
 - Added focused regression tests for route helper behavior, partial readiness states, and remaining OpenAI error branches.

@@ -6,29 +6,46 @@ class ChatUI {
         this.messageInputId = options.messageInputId || 'message-input';
         this.submitButtonId = options.submitButtonId || 'send-button';
         this.welcomeTimestampId = options.welcomeTimestampId || 'welcome-timestamp';
-        
+        this.requestStatusId = options.requestStatusId || 'chat-request-status';
+        this.requestInFlight = false;
+        this.transportErrorHandled = false;
+
         this.init();
     }
-    
+
     init() {
+        this.form = document.getElementById(this.formId);
+        this.chatBox = document.getElementById(this.chatBoxId);
+        this.messageInput = document.getElementById(this.messageInputId);
+        this.submitButton = document.getElementById(this.submitButtonId);
+        this.requestStatus = document.getElementById(this.requestStatusId);
+        this.chatAvailable = this.form ? this.form.dataset.chatAvailable !== 'false' : false;
+        this.serviceUnavailableMessage = this.form?.dataset.serviceUnavailableMessage
+            || 'The chat service is temporarily unavailable. Please try again shortly.';
+
         // Set welcome message timestamp
         const welcomeTimestamp = document.getElementById(this.welcomeTimestampId);
         if (welcomeTimestamp) {
             welcomeTimestamp.textContent = this.getFormattedTime();
         }
-        
+
         // Initialize textarea auto-resize
         this.initTextarea();
-        
+
         // Add event listeners
         this.addEventListeners();
-        
+
+        this.setControlsDisabled(!this.chatAvailable);
+        if (!this.chatAvailable) {
+            this.setRequestStatus(this.serviceUnavailableMessage, 'error');
+        }
+
         // Initial scroll to bottom
         this.scrollToBottom();
     }
-    
+
     initTextarea() {
-        const textarea = document.getElementById(this.messageInputId);
+        const textarea = this.messageInput;
         if (!textarea) return;
 
         // Set initial height
@@ -38,37 +55,41 @@ class ChatUI {
         // Add input event listener for auto-resize
         textarea.addEventListener('input', () => {
             this.adjustTextareaHeight(textarea);
+            this.syncSubmitButtonHeight(textarea);
         });
 
         // Handle Enter key (Shift+Enter for new line)
         textarea.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                const form = document.getElementById(this.formId);
-                if (form && textarea.value.trim()) {
-                    form.dispatchEvent(new Event('submit'));
+                if (this.form && textarea.value.trim() && !this.requestInFlight && this.chatAvailable) {
+                    if (typeof this.form.requestSubmit === 'function') {
+                        this.form.requestSubmit();
+                    } else {
+                        this.form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                    }
                 }
             }
         });
     }
-    
+
     adjustTextareaHeight(textarea) {
         // Reset height to auto to get the correct scrollHeight
         textarea.style.height = 'auto';
-        
+
         // Calculate if content exceeds max height
         const maxHeight = 240;
         const shouldScroll = textarea.scrollHeight > maxHeight;
-        
+
         // Set new height based on scrollHeight, with a maximum
         textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
-        
+
         // Add or remove scrolling class based on content height
         textarea.classList.toggle('scrolling', shouldScroll);
     }
-    
+
     resetTextarea() {
-        const textarea = document.getElementById(this.messageInputId);
+        const textarea = this.messageInput;
         if (textarea) {
             textarea.value = '';
             textarea.style.height = 'auto';
@@ -78,27 +99,27 @@ class ChatUI {
     }
 
     syncSubmitButtonHeight(textarea) {
-        const submitButton = document.getElementById(this.submitButtonId);
+        const submitButton = this.submitButton;
         if (!submitButton) return;
 
         submitButton.style.height = `${textarea.offsetHeight}px`;
     }
-    
+
     getFormattedTime() {
         const now = new Date();
         let hours = now.getHours();
         const minutes = now.getMinutes().toString().padStart(2, '0');
         const ampm = hours >= 12 ? 'PM' : 'AM';
-        
+
         hours = hours % 12;
         hours = hours ? hours : 12; // Convert 0 to 12
         const formattedHours = hours.toString().padStart(2, '0');
-        
+
         return `${formattedHours}:${minutes} ${ampm}`;
     }
-    
+
     scrollToBottom() {
-        const chatBox = document.getElementById(this.chatBoxId);
+        const chatBox = this.chatBox;
         if (chatBox) {
             // Use a small timeout to ensure the DOM has updated
             setTimeout(() => {
@@ -106,70 +127,109 @@ class ChatUI {
             }, 100);
         }
     }
-    
+
     createTypingIndicator() {
         const typingIndicator = document.createElement('div');
-        typingIndicator.className = 'message bot-message bg-gray-100 p-3 rounded-lg max-w-[90%] sm:max-w-[80%] fade-in';
+        typingIndicator.className = 'message bot-message fade-in';
+        typingIndicator.dataset.typingIndicator = 'true';
         typingIndicator.innerHTML = `
-            <div class="flex items-center h-6">
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
+            <div class="message-content">
+                <div class="typing-indicator-row">
+                    <div class="typing-indicator-dots" aria-hidden="true">
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                    </div>
+                </div>
             </div>
         `;
         return typingIndicator;
     }
-    
+
     addEventListeners() {
-        // Form submission
-        const form = document.getElementById(this.formId);
-        if (form) {
-            form.addEventListener('htmx:beforeRequest', (event) => {
-                this.handleBeforeRequest(event);
+        if (!this.form) return;
+
+        this.form.addEventListener('submit', (event) => {
+            this.handleSubmit(event);
+        });
+
+        this.form.addEventListener('htmx:beforeRequest', (event) => {
+            this.handleBeforeRequest(event);
+        });
+
+        if (document.body) {
+            document.body.addEventListener('htmx:beforeSwap', (event) => {
+                this.handleBeforeSwap(event);
+            });
+
+            document.body.addEventListener('htmx:afterRequest', (event) => {
+                this.handleAfterRequest(event);
+            });
+
+            document.body.addEventListener('htmx:sendError', (event) => {
+                this.handleTransportError(event);
+            });
+
+            document.body.addEventListener('htmx:timeout', (event) => {
+                this.handleTransportError(event);
+            });
+
+            document.body.addEventListener('htmx:sendAbort', (event) => {
+                this.handleTransportError(event);
+            });
+
+            document.body.addEventListener('htmx:afterSwap', () => {
+                this.scrollToBottom();
             });
         }
-        
-        // Response handling
-        document.body.addEventListener('htmx:beforeSwap', () => {
-            this.removeTypingIndicator();
-        });
-        
-        // After request cleanup
-        document.body.addEventListener('htmx:afterRequest', () => {
-            this.handleAfterRequest();
-        });
-        
-        // After content added
-        document.body.addEventListener('htmx:afterSwap', () => {
-            this.scrollToBottom();
-        });
     }
-    
-    handleBeforeRequest(event) {
-        const messageInput = document.getElementById(this.messageInputId);
-        if (!messageInput) return;
-        
-        const message = messageInput.value.trim();
-        
-        if (!message) {
+
+    handleSubmit(event) {
+        if (!this.form || event.target !== this.form) return;
+
+        if (!this.chatAvailable || this.requestInFlight) {
             event.preventDefault();
             return;
         }
-        
+
+        const message = this.messageInput?.value.trim() || '';
+        if (!message) {
+            event.preventDefault();
+            this.setRequestStatus('Enter a message before sending.', 'error');
+        }
+    }
+
+    handleBeforeRequest(event) {
+        if (event.target !== this.form) return;
+
+        const message = this.messageInput?.value.trim() || '';
+        if (!message) {
+            event.preventDefault();
+            this.finishRequest({ preserveStatus: false });
+            return;
+        }
+
+        if (this.requestInFlight) {
+            event.preventDefault();
+            return;
+        }
+
+        this.requestInFlight = true;
+        this.transportErrorHandled = false;
+        this.setControlsDisabled(true);
+        this.setRequestStatus('', 'idle');
+
         // Add user message
         this.addUserMessage(message);
-        
+
         // Add typing indicator
         this.addTypingIndicator();
-        
-        // Add timestamp to form
-        this.addTimestampToForm(event.target);
     }
-    
+
     addUserMessage(message) {
-        const chatBox = document.getElementById(this.chatBoxId);
+        const chatBox = this.chatBox;
         if (!chatBox) return;
-        
+
         const currentTime = this.getFormattedTime();
         const userMessageDiv = document.createElement('div');
         userMessageDiv.className = 'message user-message bg-primary-100 p-3 rounded-lg ml-auto max-w-[80%] fade-in';
@@ -190,38 +250,168 @@ class ChatUI {
 
         chatBox.appendChild(userMessageDiv);
     }
-    
-    addTypingIndicator() {
-        const chatBox = document.getElementById(this.chatBoxId);
+
+    addBotMessage(title, body, isError = false) {
+        const chatBox = this.chatBox;
         if (!chatBox) return;
-        
+
+        const currentTime = this.getFormattedTime();
+        const botMessageDiv = document.createElement('div');
+        botMessageDiv.className = `message bot-message fade-in${isError ? ' error-message' : ''}`;
+
+        const messageContentDiv = document.createElement('div');
+        messageContentDiv.className = 'message-content';
+
+        if (title) {
+            const titleDiv = document.createElement('div');
+            titleDiv.className = 'message-title';
+            titleDiv.textContent = title;
+            messageContentDiv.appendChild(titleDiv);
+        }
+
+        const bodyDiv = document.createElement('div');
+        bodyDiv.className = 'message-body';
+        bodyDiv.textContent = body;
+
+        const timestampDiv = document.createElement('div');
+        timestampDiv.className = 'message-timestamp';
+        timestampDiv.textContent = currentTime;
+
+        messageContentDiv.appendChild(bodyDiv);
+        messageContentDiv.appendChild(timestampDiv);
+        botMessageDiv.appendChild(messageContentDiv);
+        chatBox.appendChild(botMessageDiv);
+    }
+
+    addTypingIndicator() {
+        const chatBox = this.chatBox;
+        if (!chatBox) return;
+
         const typingIndicator = this.createTypingIndicator();
         chatBox.appendChild(typingIndicator);
         this.scrollToBottom();
     }
-    
+
     removeTypingIndicator() {
-        const typingIndicators = document.querySelectorAll('.typing-dot');
-        if (typingIndicators.length > 0) {
-            const indicator = typingIndicators[0].closest('.message');
-            if (indicator) {
-                indicator.remove();
-            }
+        const indicator = this.chatBox?.querySelector('[data-typing-indicator="true"]');
+        if (indicator) {
+            indicator.remove();
         }
     }
-    
-    addTimestampToForm(form) {
-        if (!form) return;
-        
-        const timeInput = document.createElement('input');
-        timeInput.type = 'hidden';
-        timeInput.name = 'timestamp';
-        timeInput.value = this.getFormattedTime();
-        form.appendChild(timeInput);
+
+    handleBeforeSwap(event) {
+        if (!this.isTrackedRequestEvent(event)) return;
+
+        this.removeTypingIndicator();
+
+        const status = event.detail.xhr?.status || 0;
+        if (status >= 400) {
+            event.detail.shouldSwap = true;
+            event.detail.isError = false;
+            this.setRequestStatus(this.statusMessageForStatus(status), 'error');
+        }
     }
-    
-    handleAfterRequest() {
+
+    handleAfterRequest(event) {
+        if (!this.isTrackedRequestEvent(event)) return;
+
+        const status = event.detail.xhr?.status || 0;
+        const failed = status >= 400 || Boolean(event.detail.failed);
+
+        if (status === 0 && failed && !this.transportErrorHandled) {
+            this.handleTransportError(event);
+            return;
+        }
+
+        this.finishRequest({ preserveStatus: failed });
+    }
+
+    handleTransportError(event) {
+        if (!this.isTrackedRequestEvent(event)) return;
+        if (!this.requestInFlight) return;
+        if (this.transportErrorHandled) return;
+
+        this.transportErrorHandled = true;
+        this.removeTypingIndicator();
+        this.addBotMessage(
+            'Service Unavailable',
+            'Could not reach the chat service. Please try again shortly.',
+            true,
+        );
+        this.finishRequest({ preserveStatus: true });
+        this.setRequestStatus('Could not reach the chat service. Please try again.', 'error');
+    }
+
+    finishRequest({ preserveStatus }) {
+        this.requestInFlight = false;
+        this.transportErrorHandled = false;
         this.resetTextarea();
+        this.setControlsDisabled(false);
+
+        if (!preserveStatus) {
+            this.setRequestStatus('', 'idle');
+        }
+    }
+
+    setControlsDisabled(disabled) {
+        const shouldDisable = disabled || !this.chatAvailable;
+
+        if (this.messageInput) {
+            this.messageInput.disabled = shouldDisable;
+            this.messageInput.setAttribute('aria-disabled', shouldDisable ? 'true' : 'false');
+        }
+
+        if (this.submitButton) {
+            this.submitButton.disabled = shouldDisable;
+            this.submitButton.setAttribute('aria-disabled', shouldDisable ? 'true' : 'false');
+        }
+    }
+
+    setRequestStatus(message, state) {
+        if (!this.requestStatus) return;
+
+        this.requestStatus.textContent = message;
+        if (state && state !== 'idle') {
+            this.requestStatus.dataset.state = state;
+            return;
+        }
+
+        delete this.requestStatus.dataset.state;
+    }
+
+    statusMessageForStatus(status) {
+        if (status === 400) {
+            return 'Message rejected. Update it and try again.';
+        }
+
+        if (status === 401) {
+            return 'The chat service authentication failed.';
+        }
+
+        if (status === 429) {
+            return 'The chat service is busy. Please try again shortly.';
+        }
+
+        if (status === 503 || status === 504) {
+            return this.serviceUnavailableMessage;
+        }
+
+        return 'The chat request failed. Please try again.';
+    }
+
+    isTrackedRequestEvent(event) {
+        if (!this.form) return false;
+
+        if (event.target === this.form) {
+            return true;
+        }
+
+        const requestElt = event.detail?.requestConfig?.elt;
+        if (requestElt) {
+            return requestElt === this.form;
+        }
+
+        return this.requestInFlight;
     }
 }
 
