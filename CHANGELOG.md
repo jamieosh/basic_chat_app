@@ -2,6 +2,13 @@
 
 ## 2026-03-14
 
+### Reduce External Runtime Fragility
+
+- Kept CDN-hosted HTMX and Tailwind as the intentional Phase 1 default instead of introducing a frontend build step.
+- Added explicit template comments that identify the external browser assets and document the HTMX pin plus the reviewed Tailwind CDN exception.
+- Documented the default external frontend runtime assumptions, tradeoffs, and fork guidance in the README.
+- Added regression coverage that locks the home page to the reviewed HTMX and Tailwind asset references.
+
 ### Strengthen Baseline Request And Failure UX
 
 - Prevented duplicate chat submissions while an HTMX request is already in flight.

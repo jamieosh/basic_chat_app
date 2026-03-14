@@ -80,6 +80,35 @@ The app loads `.env` from the project root, so startup does not depend on your c
 - Jinja2
 - python-dotenv
 
+## External Frontend Runtime Assumptions
+
+The default UI intentionally depends on two browser-loaded public CDN assets so the project can stay runnable without a frontend build step in Phase 1.
+
+- Required external hosts:
+  - `unpkg.com` for HTMX
+  - `cdn.tailwindcss.com` for Tailwind's browser runtime
+- Current reviewed asset URLs:
+  - HTMX: `https://unpkg.com/htmx.org@1.9.5`
+  - Tailwind browser runtime: `https://cdn.tailwindcss.com`
+- Responsibility split:
+  - HTMX powers the default request/response interaction model for the chat form.
+  - Tailwind's browser runtime provides the utility classes used by the page shell and chat layout.
+  - `/static/css/chat.css` and `/static/js/chat.js` remain the project-owned frontend assets.
+- If those external assets are blocked:
+  - without HTMX, the chat form does not perform the intended inline request/append flow
+  - without Tailwind's browser runtime, the page still renders HTML but loses much of its layout and visual styling
+- Tradeoff:
+  - this keeps the default setup minimal and avoids a frontend toolchain
+  - it also means the baseline UI relies on public CDN availability and network access from the browser
+- Guidance for forks:
+  - if you need self-hosted, restricted-network, or air-gapped deployments, plan to replace these CDN references with locally served or otherwise controlled assets
+  - treat any change to these asset URLs as an intentional runtime decision, not a cosmetic refactor
+
+Maintainer note:
+
+- HTMX version changes should remain exact and explicitly reviewed.
+- Tailwind CDN usage is a temporary Phase 1 convenience for the no-build-step baseline, not a long-term commitment to public-CDN runtime delivery.
+
 ## Project Structure
 
 ```

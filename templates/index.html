@@ -4,7 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Chat</title>
+    <!-- Phase 1 default: load HTMX from a public CDN with an exact reviewed version pin. -->
+    <!-- Forks that change this URL should treat it as a deliberate runtime dependency decision. -->
     <script src="https://unpkg.com/htmx.org@1.9.5"></script>
+    <!-- Phase 1 default: keep Tailwind's browser runtime on the public CDN for a no-build-step setup. -->
+    <!-- This is an intentional reviewed exception to exact pinning, not an accidental dependency. -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {

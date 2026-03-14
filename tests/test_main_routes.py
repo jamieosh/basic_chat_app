@@ -111,6 +111,14 @@ def test_home_renders_chat_header(client):
     assert client.app.state.agent.model_display_name in response.text
 
 
+def test_home_renders_reviewed_external_frontend_asset_references(client):
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert '<script src="https://unpkg.com/htmx.org@1.9.5"></script>' in response.text
+    assert '<script src="https://cdn.tailwindcss.com"></script>' in response.text
+
+
 def test_home_renders_unavailable_shell_when_agent_is_missing(client):
     del client.app.state.agent
 
