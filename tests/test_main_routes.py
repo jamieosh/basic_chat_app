@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from agents.openai_agent import EmptyModelResponseError
 from utils import diagnostics
 from utils.diagnostics import StartupDiagnosticsError
+from utils.settings import RuntimeSettings
 
 
 def test_health_check(client):
@@ -248,9 +249,13 @@ def test_create_app_defers_logging_and_agent_init_until_startup(monkeypatch):
         display_name = "Fake Bot"
         model_display_name = "Fake Model"
 
-        def __init__(self, api_key):
+        def __init__(self, api_key, model, prompt_name, temperature, timeout):
             calls["agent_ctor"] += 1
             self.api_key = api_key
+            self.model = model
+            self.prompt_name = prompt_name
+            self.temperature = temperature
+            self.timeout = timeout
 
         def process_message(self, _msg):
             return "unused"
@@ -268,12 +273,10 @@ def test_create_app_defers_logging_and_agent_init_until_startup(monkeypatch):
     with TestClient(app) as startup_client:
         assert calls == {"init_logging": 1, "agent_ctor": 1}
         assert startup_client.app.state.agent.display_name == "Fake Bot"
+        assert startup_client.app.state.agent.model == "gpt-4o-mini"
 
 
 def test_create_app_fails_with_clear_message_when_openai_key_missing(monkeypatch):
-    def fake_load_dotenv():
-        return None
-
     def fake_init_logging():
         return None
 
@@ -282,7 +285,7 @@ def test_create_app_fails_with_clear_message_when_openai_key_missing(monkeypatch
             raise AssertionError("OpenAIAgent should not be constructed without OPENAI_API_KEY")
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr(main, "load_dotenv", fake_load_dotenv)
+    monkeypatch.setattr(main, "load_project_env", lambda: False)
     monkeypatch.setattr(main, "init_logging", fake_init_logging)
     monkeypatch.setattr(main, "OpenAIAgent", NeverCalledAgent)
 
@@ -297,19 +300,16 @@ def test_create_app_fails_with_clear_message_when_openai_key_missing(monkeypatch
 
 
 def test_create_app_fails_with_clear_message_when_system_prompt_template_missing(monkeypatch):
-    def fake_load_dotenv():
-        return None
-
     def fake_init_logging():
         return None
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    monkeypatch.setattr(main, "load_dotenv", fake_load_dotenv)
+    monkeypatch.setattr(main, "load_project_env", lambda: False)
     monkeypatch.setattr(main, "init_logging", fake_init_logging)
     monkeypatch.setattr(
         diagnostics,
-        "REQUIRED_STARTUP_PATHS",
-        [
+        "get_required_startup_paths",
+        lambda _prompt_name: [
             (
                 "system_prompt_template",
                 Path("templates/prompts/openai/missing_system.j2"),
@@ -326,3 +326,27 @@ def test_create_app_fails_with_clear_message_when_system_prompt_template_missing
     with pytest.raises(StartupDiagnosticsError, match=expected):
         with TestClient(app):
             pass
+
+
+def test_create_app_uses_env_driven_cors_configuration():
+    settings = RuntimeSettings(
+        openai_api_key="test-key",
+        openai_model="gpt-4o-mini",
+        openai_prompt_name="default",
+        openai_temperature=0.0,
+        openai_timeout_seconds=30.0,
+        cors_allowed_origins=["https://example.com", "https://internal.example"],
+        cors_allow_credentials=True,
+        cors_allowed_methods=["GET", "POST"],
+        cors_allowed_headers=["HX-Request", "Content-Type"],
+    )
+
+    app = main.create_app(settings=settings)
+
+    cors_middleware = app.user_middleware[0]
+    assert cors_middleware.kwargs == {
+        "allow_origins": ["https://example.com", "https://internal.example"],
+        "allow_credentials": True,
+        "allow_methods": ["GET", "POST"],
+        "allow_headers": ["HX-Request", "Content-Type"],
+    }

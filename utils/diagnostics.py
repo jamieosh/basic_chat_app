@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from utils.settings import RuntimeSettings
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -27,39 +29,45 @@ class StartupDiagnosticsError(RuntimeError):
         super().__init__(f"Startup diagnostics failed: {summary}")
 
 
-REQUIRED_STARTUP_PATHS: list[tuple[str, Path, str]] = [
-    (
-        "templates_dir",
-        PROJECT_ROOT / "templates",
-        "Restore the templates directory in the project root.",
-    ),
-    (
-        "openai_prompts_dir",
-        PROJECT_ROOT / "templates/prompts/openai",
-        "Restore the OpenAI prompt templates directory.",
-    ),
-    (
-        "system_prompt_template",
-        PROJECT_ROOT / "templates/prompts/openai/system_default.j2",
-        "Restore templates/prompts/openai/system_default.j2 or update the configured prompt name.",
-    ),
-    (
-        "static_dir",
-        PROJECT_ROOT / "static",
-        "Restore the static assets directory in the project root.",
-    ),
-]
+def get_required_startup_paths(prompt_name: str) -> list[tuple[str, Path, str]]:
+    return [
+        (
+            "templates_dir",
+            PROJECT_ROOT / "templates",
+            "Restore the templates directory in the project root.",
+        ),
+        (
+            "openai_prompts_dir",
+            PROJECT_ROOT / "templates/prompts/openai",
+            "Restore the OpenAI prompt templates directory.",
+        ),
+        (
+            "system_prompt_template",
+            PROJECT_ROOT / f"templates/prompts/openai/system_{prompt_name}.j2",
+            (
+                f"Restore templates/prompts/openai/system_{prompt_name}.j2 "
+                "or update OPENAI_PROMPT_NAME."
+            ),
+        ),
+        (
+            "static_dir",
+            PROJECT_ROOT / "static",
+            "Restore the static assets directory in the project root.",
+        ),
+    ]
 
 
-def collect_startup_checks() -> list[DiagnosticCheck]:
+def collect_startup_checks(settings: RuntimeSettings) -> list[DiagnosticCheck]:
     checks = [
-        _check_required_env_var(
+        _check_required_setting(
             "OPENAI_API_KEY",
+            settings.openai_api_key,
+            detail_prefix="Environment variable",
             remediation="Set OPENAI_API_KEY in .env or the process environment before startup.",
         )
     ]
 
-    for name, path, remediation in REQUIRED_STARTUP_PATHS:
+    for name, path, remediation in get_required_startup_paths(settings.openai_prompt_name):
         checks.append(_check_required_path(name, path, remediation=remediation))
 
     return checks
@@ -111,12 +119,15 @@ def build_readiness_payload(*, startup_complete: bool, agent_initialized: bool) 
     return 200, payload
 
 
-def _check_required_env_var(name: str, *, remediation: str) -> DiagnosticCheck:
-    import os
-
-    value = os.getenv(name)
+def _check_required_setting(
+    name: str,
+    value: str | None,
+    *,
+    detail_prefix: str,
+    remediation: str,
+) -> DiagnosticCheck:
     if value and value.strip():
-        return DiagnosticCheck(name=name, ok=True, detail=f"Environment variable {name} is set.")
+        return DiagnosticCheck(name=name, ok=True, detail=f"{detail_prefix} {name} is set.")
 
     return DiagnosticCheck(
         name=name,

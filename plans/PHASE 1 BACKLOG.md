@@ -5,17 +5,6 @@ Items are intentionally unnumbered so they can be reordered as priorities change
 
 -- 
 
-## Finish Portability And Configuration Baseline
-
-Phase 1 should be portable and predictable for local use before it grows broader capabilities. That means startup should not depend on incidental working-directory assumptions, local setup should be obvious, and baseline runtime configuration should not contradict the project's current no-auth, experimentation-first posture. Some of this work is already in place, but the backlog should still track the remaining cleanup needed to make the baseline coherent.
-
-- Keep path resolution, startup expectations, and local environment setup portable and explicit.
-- Make CORS behavior environment-driven and aligned with the current no-auth baseline.
-- Remove contradictory default configuration that would confuse local users or small internal forks.
-- Keep packaging/runtime metadata and developer setup documentation aligned with actual project requirements.
-
--- 
-
 ## Expand Regression Coverage For Baseline Reliability
 
 A small project still needs strong confidence in its core behavior. This item adds focused, deterministic tests around known fragile paths so refactors and experiments do not regress the baseline chat flow. The emphasis is on high-signal test coverage, not test volume, with particular attention to the startup and configuration behavior that now defines Phase 1 quality.

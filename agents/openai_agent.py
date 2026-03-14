@@ -1,5 +1,6 @@
 import openai
 from openai.types.chat import ChatCompletionMessageParam
+from pathlib import Path
 
 from .base_agent import BaseAgent
 from utils.logging_config import get_logger
@@ -13,7 +14,15 @@ class EmptyModelResponseError(RuntimeError):
 class OpenAIAgent(BaseAgent):
     """Agent that uses OpenAI's API to process messages"""
 
-    def __init__(self, api_key, model="gpt-4o-mini"):
+    def __init__(
+        self,
+        api_key,
+        model="gpt-4o-mini",
+        prompt_name="default",
+        temperature=0.0,
+        timeout=30.0,
+        templates_dir: str | Path | None = None,
+    ):
         """Initialize the OpenAI agent
         
         Args:
@@ -25,12 +34,13 @@ class OpenAIAgent(BaseAgent):
         """
         self.client = openai.OpenAI(api_key=api_key)
         self.model = model
-        self.prompt_name = "default"
-        self.temperature = 0.0
+        self.prompt_name = prompt_name
+        self.temperature = temperature
+        self.timeout = timeout
         self.logger = get_logger("agent.openai")
 
         # Initialize prompt template manager
-        self.prompt_manager = PromptTemplateManager(agent_name="openai")
+        self.prompt_manager = PromptTemplateManager(agent_name="openai", templates_dir=templates_dir)
 
         # Variables for templates
         self.system_template_vars = {
@@ -137,7 +147,7 @@ class OpenAIAgent(BaseAgent):
                     model=self.model,
                     messages=messages,
                     temperature=self.temperature,
-                    timeout=30  # Add timeout to prevent hanging requests
+                    timeout=self.timeout,
                 )
 
                 response_text = self._extract_response_text(response)

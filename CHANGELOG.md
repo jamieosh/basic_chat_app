@@ -2,6 +2,15 @@
 
 ## 2026-03-14
 
+### Finish Portability And Configuration Baseline
+
+- Added a central runtime settings layer for OpenAI and CORS configuration.
+- Made `.env` loading explicitly project-root-based so startup does not depend on the current working directory.
+- Switched CORS behavior to environment-driven defaults aligned with the current no-auth baseline.
+- Allowed model name, prompt name, timeout, and temperature to be configured without code changes.
+- Updated setup documentation and example environment configuration to match the supported runtime surface.
+- Added regression coverage for settings parsing, CORS wiring, configured prompt lookup, and env-driven agent startup.
+
 ### Improve Startup And Runtime Diagnostics
 
 - Added explicit startup diagnostics for required configuration and app asset checks.

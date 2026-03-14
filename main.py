@@ -1,13 +1,11 @@
 import asyncio
 import html
-import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from textwrap import dedent
 
 import openai
-from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -24,6 +22,7 @@ from utils.diagnostics import (
 )
 from utils.html_formatter import format_response_as_html
 from utils.logging_config import get_logger, init_logging
+from utils.settings import RuntimeSettings, get_settings, load_project_env
 
 APP_ROOT = Path(__file__).resolve().parent
 TEMPLATES_DIR = APP_ROOT / "templates"
@@ -92,15 +91,21 @@ def _log_known_chat_error(event: str, exc: Exception) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize dependencies at startup instead of import time."""
-    load_dotenv()
     init_logging()
     _set_startup_state(app, startup_complete=False)
     logger.info("startup.begin")
 
-    startup_checks = collect_startup_checks()
+    settings: RuntimeSettings = app.state.settings
+    startup_checks = collect_startup_checks(settings)
     try:
         raise_for_failed_startup_checks(startup_checks)
-        app.state.agent = OpenAIAgent(api_key=os.environ["OPENAI_API_KEY"])
+        app.state.agent = OpenAIAgent(
+            api_key=settings.openai_api_key or "",
+            model=settings.openai_model,
+            prompt_name=settings.openai_prompt_name,
+            temperature=settings.openai_temperature,
+            timeout=settings.openai_timeout_seconds,
+        )
     except StartupDiagnosticsError as exc:
         for failure in exc.failures:
             logger.critical("startup.failed check=%s detail=%s", failure.name, failure.detail)
@@ -132,15 +137,16 @@ async def lifespan(app: FastAPI):
         logger.info("startup.shutdown")
 
 
-def create_app() -> FastAPI:
+def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
+    load_project_env()
+    settings = settings or get_settings()
+
     app = FastAPI(lifespan=lifespan)
+    app.state.settings = settings
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        **settings.cors_middleware_kwargs(),
     )
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR), check_dir=False), name="static")

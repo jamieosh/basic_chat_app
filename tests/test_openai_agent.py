@@ -54,6 +54,43 @@ def test_unknown_model_display_name_falls_back_to_model():
     assert agent.model_display_name == "my-custom-model"
 
 
+def test_process_message_uses_configured_prompt_name_temperature_and_timeout(tmp_path):
+    templates_dir = tmp_path / "templates" / "prompts" / "openai"
+    templates_dir.mkdir(parents=True)
+    (templates_dir / "system_portable.j2").write_text("System prompt", encoding="utf-8")
+    (templates_dir / "user_portable.j2").write_text("", encoding="utf-8")
+
+    agent = OpenAIAgent(
+        api_key="test-key",
+        model="gpt-4o",
+        prompt_name="portable",
+        temperature=0.7,
+        timeout=12.5,
+        templates_dir=tmp_path / "templates" / "prompts",
+    )
+    captured = {}
+
+    def fake_create(**kwargs):
+        captured.update(kwargs)
+        return types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="Configured reply"))]
+        )
+
+    agent.client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=fake_create)
+        )
+    )
+
+    reply = agent.process_message("Hello there")
+
+    assert reply == "Configured reply"
+    assert captured["model"] == "gpt-4o"
+    assert captured["temperature"] == 0.7
+    assert captured["timeout"] == 12.5
+    assert captured["messages"][0]["content"] == "System prompt"
+
+
 def test_process_message_without_context_prompt_uses_raw_user_message():
     agent = OpenAIAgent(api_key="test-key")
     captured = {}

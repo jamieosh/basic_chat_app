@@ -21,6 +21,15 @@ Those documents define the long-term direction and maturity phases. This README 
 - Safe HTML rendering with fenced code block formatting.
 - Responsive frontend suitable for desktop and mobile.
 
+## Phase 1 Baseline Status
+
+The portability and configuration baseline is now part of the current default behavior:
+
+- Startup path resolution is project-root-aware rather than dependent on the shell's current working directory.
+- Runtime behavior is configurable through environment variables instead of route-level or agent-level constants.
+- Default CORS behavior matches the current no-auth posture: wildcard origins are allowed, but credentials stay disabled unless you opt into explicit origins.
+- Prompt/template selection, OpenAI model choice, timeout, and temperature can be changed without modifying application code.
+
 ## Near-Term Product Shape
 
 - Keep the core simple and predictable.
@@ -52,10 +61,12 @@ OPENAI_API_KEY=your_api_key_here
 
 5. Run the application:
 ```bash
-uv run uvicorn main:app --reload
+uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 The application will be available at `http://localhost:8000`.
+
+The app loads `.env` from the project root, so startup does not depend on your current working directory once the project is importable.
 
 ## Dependencies
 
@@ -130,6 +141,22 @@ uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 - Logging configuration can be modified in `utils/logging_config.py`
 - Prompt templates can be customized in `templates/prompts/`
 - UI styling can be adjusted in `static/css/chat.css`
+- Runtime configuration is environment-driven through `.env` or process env vars.
+
+Supported runtime environment variables:
+
+- `OPENAI_API_KEY`: required API key for the OpenAI client.
+- `OPENAI_MODEL`: optional model name. Default: `gpt-4o-mini`.
+- `OPENAI_PROMPT_NAME`: optional prompt template suffix. Default: `default`.
+- `OPENAI_TEMPERATURE`: optional model temperature from `0.0` to `2.0`. Default: `0.0`.
+- `OPENAI_TIMEOUT_SECONDS`: optional OpenAI request timeout. Default: `30`.
+- `CORS_ALLOWED_ORIGINS`: comma-separated allowed origins. Default: `*`.
+- `CORS_ALLOW_CREDENTIALS`: enables credentialed CORS requests. Default: `false`.
+- `CORS_ALLOWED_METHODS`: comma-separated allowed HTTP methods. Default: `*`.
+- `CORS_ALLOWED_HEADERS`: comma-separated allowed headers. Default: `*`.
+- `LOG_LEVEL`, `COMPONENT_LOG_LEVELS`, `LOG_TO_FILE`, `LOG_DIR`, `APP_NAME`: optional logging controls.
+
+For the default no-auth baseline, keep `CORS_ALLOW_CREDENTIALS=false`. If you enable credentials, use explicit `CORS_ALLOWED_ORIGINS` values instead of `*`.
 
 ### Baseline Defaults
 
