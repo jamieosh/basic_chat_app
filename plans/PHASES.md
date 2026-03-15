@@ -30,9 +30,9 @@ The shipped Phase 2 lifecycle is intentionally lightweight:
 
 -- 
 
-### 3. Chat Runtime And Extensibility Boundary
+### 3. Chat Agent Harness And Extensibility Boundary
 
-This phase formalizes the application-facing chat runtime boundary so providers, streaming, memory, and tool use can evolve without forcing route-level rewrites. It should introduce a small, clear abstraction at the app layer, reduce direct coupling to a single provider implementation, and make asynchronous execution or streaming readiness an explicit part of the design. Once that seam is in place, pluggable memory and tool capabilities can mature on top of it while keeping the core intentionally lightweight.
+This phase formalizes the application-facing chat agent harness boundary so providers, streaming, memory, and tool use can evolve without forcing route-level rewrites. It should introduce a small, clear abstraction at the app layer, reduce direct coupling to a single provider implementation, and make asynchronous execution or streaming readiness an explicit part of the design. The web chat should remain only one interface onto that harness, so a later fork could extract it into a more general agent-oriented service or process without needing to replace the core contract. Phase 3 should also prove the seam is real by implementing one backend-configured non-default harness in addition to the default OpenAI path. Once that seam is in place, pluggable memory and tool capabilities can mature on top of it while keeping the core intentionally lightweight.
 
 --
 

@@ -162,3 +162,5 @@ Phase 2 moves the app from a single-turn demo into a usable local-first chat wor
 - Keep route and template boundaries obvious.
 - Keep browser JavaScript focused on UI glue rather than application state ownership.
 - Avoid backend changes that assume future project/container features already exist.
+- Forward-looking note for Phase 3:
+  - if streaming-capable harness execution is introduced later, prefer an event-first execution surface so the existing non-streaming web flow can be a collector over the same core path rather than a separate provider-specific code path.
