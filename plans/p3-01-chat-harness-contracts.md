@@ -15,7 +15,7 @@ Define the Phase 3 app-facing chat harness contract and the normalized vocabular
 ## Acceptance Criteria
 - [x] The main app-facing execution contract, route logic, and startup wiring no longer depend on OpenAI SDK exception classes or other OpenAI-specific request/response types.
 - [x] Core harness types cover identity, capabilities, execution request, execution result, execution events, normalized failures, and observability metadata using serialization-friendly Python data structures.
-- [ ] Contributors can identify one clear app-facing interface to implement for a new harness, with app-layer versus harness/provider responsibilities documented in the codebase.
+- [x] Contributors can identify one clear app-facing interface to implement for a new harness, with app-layer versus harness/provider responsibilities documented in the codebase.
 - [x] The existing OpenAI-backed chat flow remains behaviorally equivalent for the current non-streaming app path.
 
 ## Risks / Assumptions
@@ -25,7 +25,7 @@ This slice assumes the contract and vocabulary can land before harness registry 
 - [x] Step 1: Define the normalized chat harness contract and supporting data models, replacing or evolving the current `BaseAgent` abstraction into a `ChatHarness`-style interface with explicit request/result/event/failure metadata types — files: `agents/base_agent.py`, `agents/__init__.py`, new harness contract/types module(s) if needed
 - [x] Step 2: Refactor the application-facing route, startup, and diagnostics vocabulary to depend on the harness contract and normalized failure categories instead of OpenAI exception handling or app-state naming that assumes one concrete provider agent — files: `main.py`, `utils/diagnostics.py`, `services/chat_turns.py`
 - [x] Step 3: Adapt the shipped OpenAI implementation to satisfy the new harness contract while preserving current prompt, transcript, and response behavior through normalized results/failures — files: `agents/openai_agent.py`, `utils/prompt_manager.py`
-- [ ] Step 4: Update contributor-facing documentation to clarify the app layer versus harness/provider layer split and identify the single interface future harnesses should implement — files: `README.md`, `plans/PHASE 3 DESIGN.md`
+- [x] Step 4: Update contributor-facing documentation to clarify the app layer versus harness/provider layer split and identify the single interface future harnesses should implement — files: `README.md`, `plans/PHASE 3 DESIGN.md`
 
 ## Tests to Add
 - [x] Add contract tests that verify the new harness request/result/event/failure models are serialization-friendly and encode the expected vocabulary -> covers AC: The main app-facing execution contract, route logic, and startup wiring no longer depend on OpenAI SDK exception classes or other OpenAI-specific request/response types.
@@ -34,11 +34,11 @@ This slice assumes the contract and vocabulary can land before harness registry 
 - [x] Add diagnostics/readiness tests covering the updated harness-oriented startup vocabulary and availability reporting -> covers AC: Contributors can identify one clear app-facing interface to implement for a new harness, with app-layer versus harness/provider responsibilities documented in the codebase.
 
 ## Definition of Done
-- [ ] All acceptance criteria checked off
-- [ ] All new or updated tests pass
-- [ ] `uv run ruff check .` passes
-- [ ] `uv run mypy .` passes
-- [ ] `uv run python -m pytest` passes
-- [ ] `README.md` updated if user-visible behavior changed
+- [x] All acceptance criteria checked off
+- [x] All new or updated tests pass
+- [x] `uv run ruff check .` passes
+- [x] `uv run mypy .` passes
+- [x] `uv run python -m pytest` passes
+- [x] `README.md` updated if user-visible behavior changed
 - [ ] `CHANGELOG.md` updated if the feature ships
 - [ ] `plans/PHASE 3 BACKLOG.md` updated when the feature ships

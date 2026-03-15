@@ -128,6 +128,27 @@ The response model should support both:
 - collecting a final assistant message for the current non-streaming web flow
 - emitting intermediate events later without redesigning the contract
 
+### Current P3-01 Contract Vocabulary
+
+The current implementation contract lives in `agents/chat_harness.py` and centers the app on these types:
+
+- `ChatHarness`: the primary app-facing interface for chat execution
+- `ChatHarnessIdentity`: stable harness key plus display metadata
+- `ChatHarnessCapabilities`: optional capability flags such as streaming/tool support
+- `ChatHarnessRequest`: serialization-friendly execution input
+- `ChatHarnessResult`: normalized final response for the current non-streaming flow
+- `ChatHarnessEvent`: normalized event payload for streaming-capable execution
+- `ChatHarnessFailure`: normalized failure category and retryability metadata
+- `ChatHarnessObservability`: normalized model/provider/request metadata for logs and diagnostics
+
+`BaseAgent` should now be treated as a compatibility shim for older `process_message()` implementations, not as the preferred extension point for new harnesses.
+
+The intended boundary is:
+
+- app layer code depends on `ChatHarness`, `ChatHarnessRequest`, normalized failure codes, and display metadata from `ChatHarnessIdentity`
+- harness implementations own prompt assembly, provider SDK calls, and mapping provider-specific exceptions into `ChatHarnessFailure`
+- provider-specific request and exception types stay inside the harness/provider implementation instead of leaking back into routes
+
 ## Information Flow
 
 The intended Phase 3 flow is:
