@@ -14,13 +14,16 @@ Those documents define the long-term direction and maturity phases. This README 
 ## Current Capability (Today)
 
 - Server-rendered web chat UI with HTMX interactions.
-- Single-turn request/response chat flow.
+- Multi-turn chat flow with persisted history per chat.
+- Multiple saved chats per browser/client with sidebar or drawer navigation.
+- `New chat` start screen plus chat restoration through route-backed URLs.
 - In-flight request locking so duplicate submissions are ignored while a response is pending.
+- Lightweight loading feedback while switching chats.
 - Inline failure handling for validation, service-unavailable, and transport-error states.
 - OpenAI-backed agent implementation (`gpt-5-mini` by default).
-- SQLite-backed chat storage bootstrap and repository foundation for upcoming Phase 2 history features.
+- SQLite-backed chat storage with per-client chat ownership and transcript persistence across reloads and restarts.
 - Prompt-template-driven system and user prompt construction.
-- Neutral `AI Chat` defaults with no implicit domain context or memory.
+- Neutral `AI Chat` defaults with no implicit domain context beyond the persisted transcript for the active chat.
 - Safe HTML rendering with fenced code block formatting.
 - Responsive frontend suitable for desktop and mobile.
 
@@ -154,6 +157,7 @@ basic_chat_app/
 ├── agents/                 # AI agent implementations
 │   ├── base_agent.py      # Abstract base agent class
 │   └── openai_agent.py    # OpenAI-specific agent implementation
+├── persistence/           # SQLite bootstrap and chat repository code
 ├── static/                # Static assets
 │   ├── css/              # CSS styles
 │   └── js/               # JavaScript files

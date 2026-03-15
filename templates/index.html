@@ -36,11 +36,18 @@
 </head>
 <body class="bg-gray-100 h-screen flex flex-col">
     <div class="container mx-auto max-w-6xl p-2 sm:p-4 flex-grow flex flex-col h-full">
-        <div class="bg-white shadow-lg overflow-hidden flex flex-col h-full">
+        <div class="bg-white shadow-lg overflow-hidden flex flex-col h-full relative">
             <div class="bg-gray-700 text-white p-3 sm:p-4 flex items-center justify-between flex-shrink-0">
                 <h1 class="text-lg sm:text-xl font-bold">Chat with {{ display_name }}</h1>
                 <span class="text-xs sm:text-sm bg-gray-600 px-2 py-1">{{ model_display_name }}</span>
             </div>
+
+            <div
+                id="chat-drawer-backdrop"
+                class="chat-drawer-backdrop"
+                data-chat-drawer-backdrop
+                hidden
+            ></div>
 
             <div class="chat-workspace grid grid-cols-1 md:grid-cols-[280px,minmax(0,1fr)] flex-1 min-h-0">
                 {% include "components/chat_list.html" %}

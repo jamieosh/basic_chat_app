@@ -1,10 +1,34 @@
 <aside
     id="chat-list-panel"
     class="chat-sidebar bg-gray-50 border-b md:border-b-0 md:border-r border-gray-200 flex flex-col min-h-0"
+    aria-label="Chat list"
     {% if oob_swap %}hx-swap-oob="true"{% endif %}
 >
     <div class="chat-sidebar-header border-b border-gray-200 p-4">
-        <h2 class="text-sm font-bold text-gray-900 m-0">Chats</h2>
+        <div class="chat-sidebar-header-row">
+            <h2 class="text-sm font-bold text-gray-900 m-0">Chats</h2>
+            <div class="chat-sidebar-header-actions">
+                <a
+                    href="/chat-start"
+                    hx-get="/chat-start/transcript"
+                    hx-target="#chat-box"
+                    hx-swap="innerHTML"
+                    hx-push-url="true"
+                    class="chat-new-link"
+                    data-chat-nav="new"
+                >
+                    New chat
+                </a>
+                <button
+                    type="button"
+                    class="chat-sidebar-close"
+                    data-chat-drawer-close
+                    aria-label="Close chat list"
+                >
+                    Close
+                </button>
+            </div>
+        </div>
     </div>
 
     <div class="chat-sidebar-body flex flex-col gap-2 overflow-y-auto p-3 min-h-0">
@@ -16,8 +40,10 @@
                 hx-target="#chat-box"
                 hx-swap="innerHTML"
                 hx-push-url="true"
-                class="chat-list-item block rounded-md border border-gray-200 bg-white px-3 py-2 no-underline text-inherit hover:bg-gray-100 hover:border-gray-300{% if selected_chat_id == chat.id %} is-active bg-gray-200 border-gray-400{% endif %}"
+                class="chat-list-item block border border-gray-200 bg-white px-3 py-2 no-underline text-inherit hover:bg-gray-100 hover:border-gray-300{% if selected_chat_id == chat.id %} is-active bg-gray-200 border-gray-400{% endif %}"
                 data-chat-id="{{ chat.id }}"
+                data-chat-nav="chat"
+                {% if selected_chat_id == chat.id %}aria-current="page"{% endif %}
             >
                 <div class="flex items-center justify-between gap-3">
                     <div class="chat-list-item-title text-sm font-semibold text-gray-900 truncate">{{ chat.title }}</div>

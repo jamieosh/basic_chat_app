@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from pathlib import Path
 import re
 import types
@@ -178,6 +179,25 @@ def test_home_renders_reviewed_external_frontend_asset_references(client):
     assert '<script src="https://cdn.tailwindcss.com"></script>' in response.text
 
 
+def test_format_chat_list_timestamp_shows_time_for_today():
+    timestamp = datetime.now().replace(second=0, microsecond=0).isoformat()
+
+    formatted = main._format_chat_list_timestamp(timestamp)
+
+    assert ":" in formatted
+    assert "AM" in formatted or "PM" in formatted
+
+
+def test_format_chat_list_timestamp_shows_month_and_day_for_older_dates():
+    timestamp = (datetime.now() - timedelta(days=1)).replace(second=0, microsecond=0).isoformat()
+
+    formatted = main._format_chat_list_timestamp(timestamp)
+
+    assert ":" not in formatted
+    assert "AM" not in formatted
+    assert "PM" not in formatted
+
+
 def test_home_renders_unavailable_shell_when_agent_is_missing(client):
     del client.app.state.agent
 
@@ -332,7 +352,6 @@ def test_chat_page_renders_full_stored_transcript(client):
     response = client.get(f"/chats/{chat.id}")
 
     assert response.status_code == 200
-    assert "Saved conversation" in response.text
     assert "Chat 1" in response.text
     assert "First" in response.text
     assert "Reply one" in response.text
@@ -370,6 +389,38 @@ def test_chat_list_partial_renders_visible_chats(client):
     assert response.text.index("Chat 2") < response.text.index("Chat 1")
     assert str(first_chat.id) in response.text
     assert str(second_chat.id) in response.text
+
+
+def test_chat_start_page_renders_start_screen_even_when_visible_chats_exist(client):
+    repository = client.app.state.chat_repository
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    repository.create_chat(client_id="client-a", title="Chat 1")
+
+    response = client.get("/chat-start")
+
+    assert response.status_code == 200
+    assert "Start a new chat" in response.text
+    assert 'value=""' in response.text
+    assert "Chat 1" in response.text
+
+
+def test_chat_start_transcript_partial_renders_start_screen_and_pushes_chat_start_url(client):
+    repository = client.app.state.chat_repository
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    first_chat = repository.create_chat(client_id="client-a", title="Chat 1")
+    repository.create_chat(client_id="client-a", title="Chat 2")
+
+    response = client.get("/chat-start/transcript")
+
+    assert response.status_code == 200
+    assert response.headers["HX-Push-Url"] == "/chat-start"
+    assert "Ask the first question" in response.text
+    assert 'id="chat-view-header"' in response.text
+    assert 'id="chat-list-panel"' in response.text
+    assert 'hx-swap-oob="true"' in response.text
+    assert f'data-chat-id="{first_chat.id}"' in response.text
+    assert 'id="chat-session-id"' in response.text
+    assert 'value=""' in response.text
 
 
 def test_chat_transcript_partial_renders_transcript_and_oob_updates(client):

@@ -146,6 +146,10 @@ def _chat_url_path(chat_session_id: int) -> str:
     return f"/chats/{chat_session_id}"
 
 
+def _chat_start_url_path() -> str:
+    return "/chat-start"
+
+
 def _validate_message_input(message: str | None) -> str:
     if message is None or not message.strip():
         raise ValueError("Message cannot be empty")
@@ -242,7 +246,11 @@ def _format_chat_list_timestamp(timestamp: str) -> str:
     if parsed_timestamp.tzinfo is not None:
         parsed_timestamp = parsed_timestamp.astimezone()
 
-    return parsed_timestamp.strftime("%b %d · %I:%M %p")
+    now = datetime.now(parsed_timestamp.tzinfo)
+    if parsed_timestamp.date() == now.date():
+        return parsed_timestamp.strftime("%I:%M %p")
+
+    return parsed_timestamp.strftime("%b %d")
 
 
 def _load_chat_page_state(
@@ -371,8 +379,11 @@ def _response_with_optional_push_url(
     *,
     chat_session_id: int | None,
 ) -> HTMLResponse:
-    if chat_session_id is not None:
-        response.headers["HX-Push-Url"] = _chat_url_path(chat_session_id)
+    response.headers["HX-Push-Url"] = (
+        _chat_url_path(chat_session_id)
+        if chat_session_id is not None
+        else _chat_start_url_path()
+    )
     return response
 
 
@@ -610,6 +621,26 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             should_set_cookie=should_set_client_cookie,
         )
 
+    @app.get("/chat-start", response_class=HTMLResponse)
+    async def chat_start_page(request: Request):
+        client_id, should_set_client_cookie = resolve_client_id(request)
+        context, status_code = _chat_shell_context(
+            request,
+            client_id=client_id,
+            chat_session_id=None,
+        )
+        response = templates.TemplateResponse(
+            request,
+            "index.html",
+            context,
+            status_code=status_code,
+        )
+        return _finalize_response_with_client_cookie(
+            response,
+            client_id=client_id,
+            should_set_cookie=should_set_client_cookie,
+        )
+
     @app.get("/chat-list", response_class=HTMLResponse)
     async def chat_list_partial(request: Request):
         client_id, should_set_client_cookie = resolve_client_id(request)
@@ -621,6 +652,35 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         response = HTMLResponse(
             content=_render_template_fragment("components/chat_list.html", context),
             status_code=status_code,
+        )
+        return _finalize_response_with_client_cookie(
+            response,
+            client_id=client_id,
+            should_set_cookie=should_set_client_cookie,
+        )
+
+    @app.get("/chat-start/transcript", response_class=HTMLResponse)
+    async def chat_start_transcript_partial(request: Request):
+        client_id, should_set_client_cookie = resolve_client_id(request)
+        context, status_code = _chat_shell_context(
+            request,
+            client_id=client_id,
+            chat_session_id=None,
+        )
+        response = _response_with_optional_push_url(
+            HTMLResponse(
+                content="\n".join(
+                    [
+                        _render_transcript_partial(context),
+                        _render_chat_view_updates(
+                            context,
+                            chat_session_id=cast(int | None, context["active_chat_session_id"]),
+                        ),
+                    ]
+                ),
+                status_code=status_code,
+            ),
+            chat_session_id=None,
         )
         return _finalize_response_with_client_cookie(
             response,
@@ -649,7 +709,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             status_code=status_code,
         )
         if status_code == 200:
-            response.headers["HX-Push-Url"] = _chat_url_path(chat_id)
+            response = _response_with_optional_push_url(response, chat_session_id=chat_id)
         return _finalize_response_with_client_cookie(
             response,
             client_id=client_id,

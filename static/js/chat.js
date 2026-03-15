@@ -6,8 +6,10 @@ class ChatUI {
         this.messageInputId = options.messageInputId || 'message-input';
         this.submitButtonId = options.submitButtonId || 'send-button';
         this.requestStatusId = options.requestStatusId || 'chat-request-status';
+        this.navigationStatusId = options.navigationStatusId || 'chat-navigation-status';
         this.requestInFlight = false;
         this.transportErrorHandled = false;
+        this.navigationRequestInFlight = false;
 
         this.init();
     }
@@ -18,12 +20,15 @@ class ChatUI {
         this.messageInput = document.getElementById(this.messageInputId);
         this.submitButton = document.getElementById(this.submitButtonId);
         this.requestStatus = document.getElementById(this.requestStatusId);
+        this.navigationStatus = document.getElementById(this.navigationStatusId);
         this.chatAvailable = this.form ? this.form.dataset.chatAvailable !== 'false' : false;
         this.serviceUnavailableMessage = this.form?.dataset.serviceUnavailableMessage
             || 'The chat service is temporarily unavailable. Please try again shortly.';
 
         // Initialize textarea auto-resize
         this.initTextarea();
+
+        this.syncDrawerState(false);
 
         // Add event listeners
         this.addEventListeners();
@@ -140,23 +145,35 @@ class ChatUI {
     }
 
     addEventListeners() {
-        if (!this.form) return;
+        if (this.form) {
+            this.form.addEventListener('submit', (event) => {
+                this.handleSubmit(event);
+            });
 
-        this.form.addEventListener('submit', (event) => {
-            this.handleSubmit(event);
-        });
-
-        this.form.addEventListener('htmx:beforeRequest', (event) => {
-            this.handleBeforeRequest(event);
-        });
+            this.form.addEventListener('htmx:beforeRequest', (event) => {
+                this.handleBeforeRequest(event);
+            });
+        }
 
         if (document.body) {
+            document.body.addEventListener('click', (event) => {
+                this.handleBodyClick(event);
+            });
+
+            document.body.addEventListener('keydown', (event) => {
+                this.handleBodyKeydown(event);
+            });
+
             document.body.addEventListener('htmx:beforeSwap', (event) => {
                 this.handleBeforeSwap(event);
             });
 
             document.body.addEventListener('htmx:afterRequest', (event) => {
                 this.handleAfterRequest(event);
+            });
+
+            document.body.addEventListener('htmx:beforeRequest', (event) => {
+                this.handleNavigationBeforeRequest(event);
             });
 
             document.body.addEventListener('htmx:sendError', (event) => {
@@ -171,10 +188,102 @@ class ChatUI {
                 this.handleTransportError(event);
             });
 
-            document.body.addEventListener('htmx:afterSwap', () => {
+            document.body.addEventListener('htmx:afterSwap', (event) => {
+                this.handleAfterSwap(event);
                 this.scrollToBottom();
             });
         }
+
+        window.addEventListener('resize', () => {
+            if (!this.isMobileViewport()) {
+                this.closeDrawer();
+            }
+        });
+    }
+
+    handleBodyClick(event) {
+        const toggle = event.target.closest('[data-chat-drawer-toggle]');
+        if (toggle) {
+            if (this.isDrawerOpen()) {
+                this.closeDrawer();
+            } else {
+                this.openDrawer();
+            }
+            return;
+        }
+
+        if (event.target.closest('[data-chat-drawer-close]') || event.target.closest('[data-chat-drawer-backdrop]')) {
+            this.closeDrawer();
+        }
+    }
+
+    handleBodyKeydown(event) {
+        if (event.key === 'Escape' && this.isDrawerOpen()) {
+            this.closeDrawer();
+        }
+    }
+
+    getChatListPanel() {
+        return document.getElementById('chat-list-panel');
+    }
+
+    getDrawerBackdrop() {
+        return document.querySelector('[data-chat-drawer-backdrop]');
+    }
+
+    getDrawerToggle() {
+        return document.querySelector('[data-chat-drawer-toggle]');
+    }
+
+    isMobileViewport() {
+        return window.matchMedia('(max-width: 768px)').matches;
+    }
+
+    isDrawerOpen() {
+        const panel = this.getChatListPanel();
+        return Boolean(panel && panel.classList.contains('is-open'));
+    }
+
+    syncDrawerState(isOpen) {
+        const toggle = this.getDrawerToggle();
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        }
+    }
+
+    openDrawer() {
+        if (!this.isMobileViewport()) return;
+
+        const panel = this.getChatListPanel();
+        const backdrop = this.getDrawerBackdrop();
+        if (!panel || !backdrop) return;
+
+        panel.classList.add('is-open');
+        backdrop.hidden = false;
+        requestAnimationFrame(() => {
+            backdrop.classList.add('is-visible');
+        });
+        this.syncDrawerState(true);
+    }
+
+    closeDrawer() {
+        const panel = this.getChatListPanel();
+        const backdrop = this.getDrawerBackdrop();
+
+        if (panel) {
+            panel.classList.remove('is-open');
+        }
+
+        if (backdrop) {
+            backdrop.classList.remove('is-visible');
+            window.setTimeout(() => {
+                if (!backdrop.classList.contains('is-visible')) {
+                    backdrop.hidden = true;
+                }
+            }, 200);
+        }
+
+        this.syncDrawerState(false);
     }
 
     handleSubmit(event) {
@@ -304,46 +413,135 @@ class ChatUI {
     }
 
     handleBeforeSwap(event) {
-        if (!this.isTrackedRequestEvent(event)) return;
+        if (this.isTrackedRequestEvent(event)) {
+            this.removeTypingIndicator();
 
-        this.removeTypingIndicator();
+            const status = event.detail.xhr?.status || 0;
+            if (status >= 400) {
+                event.detail.shouldSwap = true;
+                event.detail.isError = false;
+                this.setRequestStatus(this.statusMessageForStatus(status), 'error');
+            }
+            return;
+        }
 
-        const status = event.detail.xhr?.status || 0;
-        if (status >= 400) {
-            event.detail.shouldSwap = true;
-            event.detail.isError = false;
-            this.setRequestStatus(this.statusMessageForStatus(status), 'error');
+        if (this.isNavigationRequestEvent(event)) {
+            const status = event.detail.xhr?.status || 0;
+            if (status >= 400) {
+                event.detail.shouldSwap = true;
+                event.detail.isError = false;
+            }
         }
     }
 
     handleAfterRequest(event) {
-        if (!this.isTrackedRequestEvent(event)) return;
+        if (this.isTrackedRequestEvent(event)) {
+            const status = event.detail.xhr?.status || 0;
+            const failed = status >= 400 || Boolean(event.detail.failed);
 
-        const status = event.detail.xhr?.status || 0;
-        const failed = status >= 400 || Boolean(event.detail.failed);
+            if (status === 0 && failed && !this.transportErrorHandled) {
+                this.handleTransportError(event);
+                return;
+            }
 
-        if (status === 0 && failed && !this.transportErrorHandled) {
-            this.handleTransportError(event);
+            this.finishRequest({ preserveStatus: failed });
             return;
         }
 
-        this.finishRequest({ preserveStatus: failed });
+        if (this.isNavigationRequestEvent(event)) {
+            this.finishNavigationRequest();
+        }
+    }
+
+    handleNavigationBeforeRequest(event) {
+        const trigger = this.navigationTriggerFromEvent(event);
+        if (!trigger) return;
+
+        this.navigationRequestInFlight = true;
+        this.setPendingNavigation(trigger);
+        this.setNavigationLoading(true, this.navigationLabelForTrigger(trigger));
+        this.closeDrawer();
+    }
+
+    handleAfterSwap(event) {
+        if (!this.isNavigationRequestEvent(event)) return;
+
+        this.closeDrawer();
+        this.syncDrawerState(false);
+    }
+
+    finishNavigationRequest() {
+        this.navigationRequestInFlight = false;
+        this.clearPendingNavigation();
+        this.setNavigationLoading(false);
+    }
+
+    setNavigationLoading(isLoading, message = 'Loading chat...') {
+        if (this.navigationStatus) {
+            this.navigationStatus.hidden = !isLoading;
+            const statusText = this.navigationStatus.querySelector('.chat-navigation-status-text');
+            if (statusText) {
+                statusText.textContent = message;
+            }
+        }
+
+        if (this.chatBox) {
+            this.chatBox.classList.toggle('is-loading', isLoading);
+        }
+    }
+
+    setPendingNavigation(trigger) {
+        this.clearPendingNavigation();
+        trigger.classList.add('is-pending');
+    }
+
+    clearPendingNavigation() {
+        document.querySelectorAll('[data-chat-nav].is-pending').forEach((element) => {
+            element.classList.remove('is-pending');
+        });
+    }
+
+    navigationLabelForTrigger(trigger) {
+        if (trigger.dataset.chatNav === 'new') {
+            return 'Starting a new chat...';
+        }
+
+        return 'Loading chat...';
+    }
+
+    navigationTriggerFromEvent(event) {
+        const requestElt = event.detail?.requestConfig?.elt;
+        if (!requestElt || typeof requestElt.closest !== 'function') {
+            return null;
+        }
+
+        return requestElt.closest('[data-chat-nav]');
+    }
+
+    isNavigationRequestEvent(event) {
+        return Boolean(this.navigationTriggerFromEvent(event));
     }
 
     handleTransportError(event) {
-        if (!this.isTrackedRequestEvent(event)) return;
-        if (!this.requestInFlight) return;
-        if (this.transportErrorHandled) return;
+        if (this.isTrackedRequestEvent(event)) {
+            if (!this.requestInFlight) return;
+            if (this.transportErrorHandled) return;
 
-        this.transportErrorHandled = true;
-        this.removeTypingIndicator();
-        this.addBotMessage(
-            'Service Unavailable',
-            'Could not reach the chat service. Please try again shortly.',
-            true,
-        );
-        this.finishRequest({ preserveStatus: true });
-        this.setRequestStatus('Could not reach the chat service. Please try again.', 'error');
+            this.transportErrorHandled = true;
+            this.removeTypingIndicator();
+            this.addBotMessage(
+                'Service Unavailable',
+                'Could not reach the chat service. Please try again shortly.',
+                true,
+            );
+            this.finishRequest({ preserveStatus: true });
+            this.setRequestStatus('Could not reach the chat service. Please try again.', 'error');
+            return;
+        }
+
+        if (this.isNavigationRequestEvent(event)) {
+            this.finishNavigationRequest();
+        }
     }
 
     finishRequest({ preserveStatus }) {

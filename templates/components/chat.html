@@ -2,6 +2,18 @@
     {% include "components/chat_view_header.html" %}
 
     <div class="chat-container flex flex-col h-full min-h-0">
+        <div
+            id="chat-navigation-status"
+            class="chat-navigation-status"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            hidden
+        >
+            <span class="chat-navigation-spinner" aria-hidden="true"></span>
+            <span class="chat-navigation-status-text">Loading chat...</span>
+        </div>
+
         <div id="chat-box" class="flex-1 overflow-y-auto space-y-3 sm:space-y-4 p-3 sm:p-4 min-h-0">
             {% include "components/chat_box_content.html" %}
         </div>

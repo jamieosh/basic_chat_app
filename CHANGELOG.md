@@ -2,6 +2,14 @@
 
 ## 2026-03-15
 
+### Ship Phase 2 Multi-Chat Shell And Navigation UX
+
+- Added a dedicated Chat Start Screen route and HTMX partial so `New chat` returns to a real start state without breaking `/` redirect behavior for existing chats.
+- Expanded the server-rendered shell into a more standard multi-chat workbench with a persistent desktop sidebar, mobile chat-list drawer, and OOB updates that keep header, list, and active chat state synchronized.
+- Added lightweight chat-switch loading feedback, stronger active-chat state treatment, and cleaner start-screen presentation while preserving the existing HTMX-first interaction model.
+- Refined chat-list timestamp rendering so chats updated today show time-only while older chats show a compact date.
+- Expanded route and Playwright coverage for the new start-screen route, `New chat` navigation, mobile drawer interaction, and chat-switch UX.
+
 ### Ship Phase 2 Routes, URLs, And Transcript Rendering
 
 - Added route-backed chat restoration with `/chats/{chat_id}` and redirected `/` into the latest visible chat when the current client already has saved conversations.

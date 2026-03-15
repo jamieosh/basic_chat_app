@@ -12,13 +12,17 @@
     </div>
     {% endfor %}
 {% elif view_state == "not_found" %}
-    <div class="chat-empty-state rounded-lg border border-dashed border-slate-300 bg-slate-50 px-5 py-5 max-w-2xl" data-empty-state="true">
-        <h3 class="text-base font-bold text-slate-900 m-0">Chat not found</h3>
-        <p class="text-sm leading-6 text-slate-600 mt-2 mb-0">The requested chat could not be found. You can send a message below to start a new chat.</p>
+    <div class="chat-empty-shell" data-empty-state="true">
+        <div class="chat-empty-state rounded-lg border border-dashed border-slate-300 bg-slate-50 px-5 py-5 max-w-2xl">
+            <h3 class="text-base font-bold text-slate-900 m-0">Chat not found</h3>
+            <p class="text-sm leading-6 text-slate-600 mt-2 mb-0">The requested chat could not be found. You can send a message below to start a new chat.</p>
+        </div>
     </div>
 {% else %}
-    <div class="chat-empty-state rounded-lg border border-dashed border-slate-300 bg-slate-50 px-5 py-5 max-w-2xl" data-empty-state="true">
-        <h3 class="text-base font-bold text-slate-900 m-0">Ask the first question</h3>
-        <p class="text-sm leading-6 text-slate-600 mt-2 mb-0">Conversations in this browser are saved automatically and can be reopened from their URL.</p>
+    <div class="chat-empty-shell" data-empty-state="true">
+        <div class="chat-empty-state rounded-lg border border-dashed border-slate-300 bg-slate-50 px-5 py-5 max-w-2xl">
+            <h3 class="text-base font-bold text-slate-900 m-0">Ask the first question</h3>
+            <p class="text-sm leading-6 text-slate-600 mt-2 mb-0">Conversations in this browser are saved automatically and can be reopened from their URL.</p>
+        </div>
     </div>
 {% endif %}

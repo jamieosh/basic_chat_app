@@ -6,27 +6,6 @@ See [`plans/PARKING LOT.md`](/Users/jamie/Development/basic_chat_app/plans/PARKI
 
 ## Backlog Items
 
-### P2-05 Multi-Chat Shell And Navigation UX
-
-Priority: P1
-
-Deliver:
-
-- add a standard sidebar layout on desktop
-- add a standard left drawer for the chat list on mobile
-- add a `New chat` action that returns the user to the Chat Start Screen
-- show title plus subtle timestamp in the chat list
-- show loading feedback when switching chats
-
-Acceptance criteria:
-
-- a user can create a new chat, switch to an older chat, and continue it
-- the selected chat is visually obvious on desktop and mobile
-- the UI stays aligned with the server-rendered HTMX architecture
-
-What the user will see:
-They will see a familiar multi-chat layout with a chat list, a new-chat action, and simple loading states when moving between conversations.
-
 ### P2-06 Chat Titles And Delete Lifecycle
 
 Priority: P1

@@ -4,6 +4,26 @@ Completed Phase 2 backlog items move here once they are shipped.
 
 ## Completed Items
 
+### P2-05 Multi-Chat Shell And Navigation UX
+
+Priority: P1
+
+Delivered:
+
+- kept the desktop shell as a standard sidebar plus transcript layout and added a mobile left drawer for the chat list
+- added a dedicated Chat Start Screen route plus a `New chat` action that returns users to it without creating a blank chat
+- added subtle per-chat timestamps in the list, with today showing time-only and older chats showing the date
+- added lightweight loading feedback while switching chats and kept the selected chat visually obvious across desktop and mobile
+
+Acceptance criteria met:
+
+- a user can create a new chat, switch to an older chat, and continue it
+- the selected chat is visually obvious on desktop and mobile
+- the UI stays aligned with the server-rendered HTMX architecture
+
+What the user sees:
+They get a familiar multi-chat shell with a chat list, a clean new-chat path, and lightweight loading feedback while moving between conversations.
+
 ### P2-04 Routes, URLs, And Transcript Rendering
 
 Priority: P0
