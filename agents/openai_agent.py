@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Sequence
 
-from .base_agent import BaseAgent, ConversationTurn
+from .base_agent import BaseAgent, ChatHarnessFailure, ConversationTurn
 from utils.logging_config import get_logger
 from utils.prompt_manager import PromptTemplateManager
 
@@ -97,6 +97,58 @@ class OpenAIAgent(BaseAgent):
         
         # Return the display name if it exists, otherwise return the model name
         return model_display_names.get(self.model, self.model)
+
+    def normalize_exception(self, exc: Exception) -> ChatHarnessFailure:
+        if isinstance(exc, openai.RateLimitError):
+            return ChatHarnessFailure(
+                code="rate_limited",
+                message="The AI service is currently busy. Please try again in a few moments.",
+                retryable=True,
+                detail=str(exc),
+            )
+        if isinstance(exc, openai.AuthenticationError):
+            return ChatHarnessFailure(
+                code="authentication_failed",
+                message="The AI service authentication failed.",
+                retryable=False,
+                detail=str(exc),
+            )
+        if isinstance(exc, openai.APITimeoutError):
+            return ChatHarnessFailure(
+                code="timeout",
+                message="The AI service took too long to respond.",
+                retryable=True,
+                detail=str(exc),
+            )
+        if isinstance(exc, openai.APIConnectionError):
+            return ChatHarnessFailure(
+                code="connection_error",
+                message="Could not connect to the AI service.",
+                retryable=True,
+                detail=str(exc),
+            )
+        if isinstance(exc, openai.BadRequestError):
+            return ChatHarnessFailure(
+                code="invalid_request",
+                message="The AI service rejected the request.",
+                retryable=False,
+                detail=str(exc),
+            )
+        if isinstance(exc, openai.APIError):
+            return ChatHarnessFailure(
+                code="provider_error",
+                message="The AI service encountered an error.",
+                retryable=True,
+                detail=str(exc),
+            )
+        if isinstance(exc, EmptyModelResponseError):
+            return ChatHarnessFailure(
+                code="empty_response",
+                message="The AI service returned an empty response.",
+                retryable=False,
+                detail=str(exc),
+            )
+        return super().normalize_exception(exc)
     
     def process_message(
         self,

@@ -8,15 +8,19 @@ from textwrap import dedent
 from typing import Literal, cast
 from uuid import uuid4
 
-import openai
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from agents.base_agent import ConversationTurn
-from agents.openai_agent import EmptyModelResponseError, OpenAIAgent
+from agents.base_agent import (
+    ChatHarness,
+    ChatHarnessExecutionError,
+    ChatHarnessRequest,
+    ConversationTurn,
+)
+from agents.openai_agent import OpenAIAgent
 from persistence import (
     ChatMessage,
     ChatRepository,
@@ -69,13 +73,13 @@ class ChatPageState:
         return self.selected_chat.id
 
 
-def _get_agent(request: Request) -> OpenAIAgent:
-    """Read the request-scoped agent initialized at startup."""
+def _get_chat_harness(request: Request) -> ChatHarness:
+    """Read the request-scoped harness initialized at startup."""
     try:
-        return request.app.state.agent
+        return request.app.state.chat_harness
     except AttributeError as exc:
-        logger.error("OpenAI agent is not initialized")
-        raise HTTPException(status_code=503, detail="AI agent unavailable") from exc
+        logger.error("Chat harness is not initialized")
+        raise HTTPException(status_code=503, detail="Chat harness unavailable") from exc
 
 
 def _get_chat_turn_service(request: Request) -> ChatTurnService:
@@ -84,6 +88,14 @@ def _get_chat_turn_service(request: Request) -> ChatTurnService:
     except AttributeError as exc:
         logger.error("Chat turn service is not initialized")
         raise HTTPException(status_code=503, detail="Chat turn service unavailable") from exc
+
+
+def _chat_harness_display_name(chat_harness: ChatHarness) -> str:
+    return chat_harness.identity.display_name
+
+
+def _chat_harness_model_display_name(chat_harness: ChatHarness) -> str:
+    return chat_harness.identity.model_display_name
 
 
 def _render_bot_message(
@@ -209,7 +221,7 @@ def _set_startup_state(app: FastAPI, *, startup_complete: bool) -> None:
 def _is_chat_service_available(app: FastAPI) -> bool:
     return (
         bool(getattr(app.state, "startup_complete", False))
-        and hasattr(app.state, "agent")
+        and hasattr(app.state, "chat_harness")
         and hasattr(app.state, "chat_repository")
         and hasattr(app.state, "chat_turn_service")
     )
@@ -224,7 +236,7 @@ def _chat_service_unavailable_detail(app: FastAPI) -> str:
 def _readiness_status(app: FastAPI) -> tuple[int, dict[str, object]]:
     return build_readiness_payload(
         startup_complete=bool(getattr(app.state, "startup_complete", False)),
-        agent_initialized=hasattr(app.state, "agent"),
+        harness_initialized=hasattr(app.state, "chat_harness"),
         storage_initialized=hasattr(app.state, "chat_repository"),
     )
 
@@ -458,7 +470,7 @@ def _render_chat_page_partial_response(
 def _render_chat_error_htmx_response(
     request: Request,
     *,
-    agent: OpenAIAgent,
+    chat_harness: ChatHarness,
     repository: ChatRepository,
     client_id: str,
     active_chat_session_id: int | None,
@@ -477,8 +489,8 @@ def _render_chat_error_htmx_response(
 
     page_context = _chat_page_context(
         request,
-        display_name=agent.display_name,
-        model_display_name=agent.model_display_name,
+        display_name=_chat_harness_display_name(chat_harness),
+        model_display_name=_chat_harness_model_display_name(chat_harness),
         chat_available=True,
         service_status_message=_chat_service_unavailable_detail(request.app),
         page_state=_load_chat_page_state(
@@ -507,7 +519,7 @@ def _render_chat_error_htmx_response(
 def _render_turn_request_state_response(
     request: Request,
     *,
-    agent: OpenAIAgent,
+    chat_harness: ChatHarness,
     repository: ChatRepository,
     client_id: str,
     turn_request_state: ChatTurnRequestState,
@@ -523,8 +535,8 @@ def _render_turn_request_state_response(
 
         page_context = _chat_page_context(
             request,
-            display_name=agent.display_name,
-            model_display_name=agent.model_display_name,
+            display_name=_chat_harness_display_name(chat_harness),
+            model_display_name=_chat_harness_model_display_name(chat_harness),
             chat_available=True,
             service_status_message=_chat_service_unavailable_detail(request.app),
             page_state=_load_chat_page_state(
@@ -571,7 +583,7 @@ def _render_turn_request_state_response(
 
     return _render_chat_error_htmx_response(
         request,
-        agent=agent,
+        chat_harness=chat_harness,
         repository=repository,
         client_id=client_id,
         active_chat_session_id=response_chat_session_id,
@@ -621,7 +633,7 @@ async def lifespan(app: FastAPI):
         bootstrap_database(settings.chat_database_path)
         app.state.chat_repository = ChatRepository(settings.chat_database_path)
         app.state.chat_turn_service = ChatTurnService(app.state.chat_repository)
-        app.state.agent = OpenAIAgent(
+        app.state.chat_harness = OpenAIAgent(
             api_key=settings.openai_api_key or "",
             model=settings.openai_model,
             prompt_name=settings.openai_prompt_name,
@@ -649,30 +661,30 @@ async def lifespan(app: FastAPI):
         ) from exc
     except Exception as exc:
         logger.critical(
-            "startup.failed check=agent_initialization detail=%s", str(exc), exc_info=True
+            "startup.failed check=harness_initialization detail=%s", str(exc), exc_info=True
         )
         raise StartupDiagnosticsError(
             [
                 DiagnosticCheck(
-                    name="agent_initialization",
+                    name="harness_initialization",
                     ok=False,
-                    detail=f"Failed to initialize the OpenAI agent. {str(exc)}",
+                    detail=f"Failed to initialize the chat harness. {str(exc)}",
                 )
             ]
         ) from exc
 
     _set_startup_state(app, startup_complete=True)
     logger.info(
-        "startup.ready model=%s agent=%s",
-        app.state.agent.model_display_name,
-        app.state.agent.display_name,
+        "startup.ready model=%s harness=%s",
+        _chat_harness_model_display_name(app.state.chat_harness),
+        _chat_harness_display_name(app.state.chat_harness),
     )
     try:
         yield
     finally:
         _set_startup_state(app, startup_complete=False)
-        if hasattr(app.state, "agent"):
-            del app.state.agent
+        if hasattr(app.state, "chat_harness"):
+            del app.state.chat_harness
         if hasattr(app.state, "chat_turn_service"):
             del app.state.chat_turn_service
         if hasattr(app.state, "chat_repository"):
@@ -716,9 +728,9 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         status_code = 200
 
         if chat_available:
-            agent = _get_agent(request)
-            display_name = agent.display_name
-            model_display_name = agent.model_display_name
+            chat_harness = _get_chat_harness(request)
+            display_name = _chat_harness_display_name(chat_harness)
+            model_display_name = _chat_harness_model_display_name(chat_harness)
             repository = request.app.state.chat_repository
             page_state = _load_chat_page_state(
                 repository,
@@ -923,11 +935,11 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         if visible_chats:
             next_chat_session_id = visible_chats[0].id
 
-        agent = _get_agent(request)
+        chat_harness = _get_chat_harness(request)
         page_context = _chat_page_context(
             request,
-            display_name=agent.display_name,
-            model_display_name=agent.model_display_name,
+            display_name=_chat_harness_display_name(chat_harness),
+            model_display_name=_chat_harness_model_display_name(chat_harness),
             chat_available=True,
             service_status_message=_chat_service_unavailable_detail(request.app),
             page_state=_load_chat_page_state(
@@ -978,7 +990,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 should_set_cookie=should_set_client_cookie,
             )
 
-        agent = _get_agent(request)
+        chat_harness = _get_chat_harness(request)
         repository = request.app.state.chat_repository
         chat_turn_service = _get_chat_turn_service(request)
         active_chat_session_id: int | None = None
@@ -1042,7 +1054,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                     return _finalize_response_with_client_cookie(
                         _render_chat_error_htmx_response(
                             request,
-                            agent=agent,
+                            chat_harness=chat_harness,
                             repository=repository,
                             client_id=client_id,
                             active_chat_session_id=active_chat_session_id,
@@ -1056,7 +1068,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                     )
                 replay_response = _render_turn_request_state_response(
                     request,
-                    agent=agent,
+                    chat_harness=chat_harness,
                     repository=repository,
                     client_id=client_id,
                     turn_request_state=turn_request_state,
@@ -1078,11 +1090,19 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 resolved_request_id,
             )
 
-            response = await asyncio.to_thread(
-                agent.process_message,
-                message,
-                _conversation_history_from_messages(start_result.prior_messages),
+            harness_result = await asyncio.to_thread(
+                chat_harness.run,
+                ChatHarnessRequest(
+                    message=message,
+                    conversation_history=tuple(
+                        _conversation_history_from_messages(start_result.prior_messages)
+                    ),
+                    request_id=resolved_request_id,
+                    chat_session_id=active_chat_session_id,
+                    client_id=client_id,
+                ),
             )
+            response = cast(str, harness_result.output_text)
             turn_request_state = await asyncio.to_thread(
                 chat_turn_service.complete_turn,
                 client_id=client_id,
@@ -1091,7 +1111,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             )
             html_response = _render_turn_request_state_response(
                 request,
-                agent=agent,
+                chat_harness=chat_harness,
                 repository=repository,
                 client_id=client_id,
                 turn_request_state=turn_request_state,
@@ -1127,144 +1147,19 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 should_set_cookie=should_set_client_cookie,
             )
 
-        except openai.RateLimitError as e:
-            _log_known_chat_error("chat.rate_limited", e)
+        except ChatHarnessExecutionError as exc:
+            presentation = failure_presentation(exc.failure.code)
+            _log_known_chat_error(presentation.log_event, exc)
             turn_request_state = await asyncio.to_thread(
                 chat_turn_service.fail_turn,
                 client_id=client_id,
                 request_id=resolved_request_id or "",
-                failure_code="rate_limited",
+                failure_code=exc.failure.code,
             )
             return _finalize_response_with_client_cookie(
                 _render_turn_request_state_response(
                     request,
-                    agent=agent,
-                    repository=repository,
-                    client_id=client_id,
-                    timestamp=timestamp,
-                    turn_request_state=turn_request_state,
-                ),
-                client_id=client_id,
-                should_set_cookie=should_set_client_cookie,
-            )
-
-        except openai.AuthenticationError as e:
-            _log_known_chat_error("chat.authentication_failed", e)
-            turn_request_state = await asyncio.to_thread(
-                chat_turn_service.fail_turn,
-                client_id=client_id,
-                request_id=resolved_request_id or "",
-                failure_code="authentication_failed",
-            )
-            return _finalize_response_with_client_cookie(
-                _render_turn_request_state_response(
-                    request,
-                    agent=agent,
-                    repository=repository,
-                    client_id=client_id,
-                    timestamp=timestamp,
-                    turn_request_state=turn_request_state,
-                ),
-                client_id=client_id,
-                should_set_cookie=should_set_client_cookie,
-            )
-
-        except openai.APITimeoutError as e:
-            _log_known_chat_error("chat.timeout", e)
-            turn_request_state = await asyncio.to_thread(
-                chat_turn_service.fail_turn,
-                client_id=client_id,
-                request_id=resolved_request_id or "",
-                failure_code="timeout",
-            )
-            return _finalize_response_with_client_cookie(
-                _render_turn_request_state_response(
-                    request,
-                    agent=agent,
-                    repository=repository,
-                    client_id=client_id,
-                    timestamp=timestamp,
-                    turn_request_state=turn_request_state,
-                ),
-                client_id=client_id,
-                should_set_cookie=should_set_client_cookie,
-            )
-
-        except openai.APIConnectionError as e:
-            _log_known_chat_error("chat.connection_error", e)
-            turn_request_state = await asyncio.to_thread(
-                chat_turn_service.fail_turn,
-                client_id=client_id,
-                request_id=resolved_request_id or "",
-                failure_code="connection_error",
-            )
-            return _finalize_response_with_client_cookie(
-                _render_turn_request_state_response(
-                    request,
-                    agent=agent,
-                    repository=repository,
-                    client_id=client_id,
-                    timestamp=timestamp,
-                    turn_request_state=turn_request_state,
-                ),
-                client_id=client_id,
-                should_set_cookie=should_set_client_cookie,
-            )
-
-        except openai.BadRequestError as e:
-            _log_known_chat_error("chat.bad_request", e)
-            turn_request_state = await asyncio.to_thread(
-                chat_turn_service.fail_turn,
-                client_id=client_id,
-                request_id=resolved_request_id or "",
-                failure_code="bad_request",
-            )
-            return _finalize_response_with_client_cookie(
-                _render_turn_request_state_response(
-                    request,
-                    agent=agent,
-                    repository=repository,
-                    client_id=client_id,
-                    timestamp=timestamp,
-                    turn_request_state=turn_request_state,
-                ),
-                client_id=client_id,
-                should_set_cookie=should_set_client_cookie,
-            )
-
-        except openai.APIError as e:
-            _log_known_chat_error("chat.api_error", e)
-            turn_request_state = await asyncio.to_thread(
-                chat_turn_service.fail_turn,
-                client_id=client_id,
-                request_id=resolved_request_id or "",
-                failure_code="api_error",
-            )
-            return _finalize_response_with_client_cookie(
-                _render_turn_request_state_response(
-                    request,
-                    agent=agent,
-                    repository=repository,
-                    client_id=client_id,
-                    timestamp=timestamp,
-                    turn_request_state=turn_request_state,
-                ),
-                client_id=client_id,
-                should_set_cookie=should_set_client_cookie,
-            )
-
-        except EmptyModelResponseError as e:
-            _log_known_chat_error("chat.empty_model_response", e)
-            turn_request_state = await asyncio.to_thread(
-                chat_turn_service.fail_turn,
-                client_id=client_id,
-                request_id=resolved_request_id or "",
-                failure_code="empty_model_response",
-            )
-            return _finalize_response_with_client_cookie(
-                _render_turn_request_state_response(
-                    request,
-                    agent=agent,
+                    chat_harness=chat_harness,
                     repository=repository,
                     client_id=client_id,
                     timestamp=timestamp,
@@ -1285,7 +1180,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 )
                 error_response = _render_turn_request_state_response(
                     request,
-                    agent=agent,
+                    chat_harness=chat_harness,
                     repository=repository,
                     client_id=client_id,
                     turn_request_state=turn_request_state,
@@ -1299,7 +1194,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             return _finalize_response_with_client_cookie(
                 _render_chat_error_htmx_response(
                     request,
-                    agent=agent,
+                    chat_harness=chat_harness,
                     repository=repository,
                     client_id=client_id,
                     active_chat_session_id=active_chat_session_id,

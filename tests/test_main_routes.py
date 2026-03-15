@@ -11,7 +11,12 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from agents.base_agent import ConversationTurn
+from agents.base_agent import (
+    ChatHarnessExecutionError,
+    ChatHarnessFailure,
+    ChatHarnessIdentity,
+    ConversationTurn,
+)
 from agents.openai_agent import EmptyModelResponseError
 from utils import diagnostics
 from utils.client_identity import CLIENT_ID_COOKIE_MAX_AGE_SECONDS, CLIENT_ID_COOKIE_NAME
@@ -55,9 +60,9 @@ def test_readiness_check_reports_ready_state(client):
                 "detail": "Application startup completed.",
             },
             {
-                "name": "agent_initialized",
+                "name": "harness_initialized",
                 "status": "ok",
-                "detail": "Chat agent is initialized.",
+                "detail": "Chat harness is initialized.",
             },
             {
                 "name": "storage_initialized",
@@ -68,8 +73,8 @@ def test_readiness_check_reports_ready_state(client):
     }
 
 
-def test_readiness_check_returns_503_when_agent_is_missing(client):
-    del client.app.state.agent
+def test_readiness_check_returns_503_when_harness_is_missing(client):
+    del client.app.state.chat_harness
 
     response = client.get("/health/ready")
 
@@ -83,9 +88,9 @@ def test_readiness_check_returns_503_when_agent_is_missing(client):
                 "detail": "Application startup completed.",
             },
             {
-                "name": "agent_initialized",
+                "name": "harness_initialized",
                 "status": "failed",
-                "detail": "Chat agent is not available to process messages.",
+                "detail": "Chat harness is not available to process messages.",
             },
             {
                 "name": "storage_initialized",
@@ -95,15 +100,15 @@ def test_readiness_check_returns_503_when_agent_is_missing(client):
         ],
         "failed_checks": [
             {
-                "name": "agent_initialized",
+                "name": "harness_initialized",
                 "status": "failed",
-                "detail": "Chat agent is not available to process messages.",
+                "detail": "Chat harness is not available to process messages.",
             }
         ],
     }
 
 
-def test_readiness_check_reports_partial_startup_when_agent_exists_but_startup_is_incomplete(
+def test_readiness_check_reports_partial_startup_when_harness_exists_but_startup_is_incomplete(
     client,
 ):
     client.app.state.startup_complete = False
@@ -120,9 +125,9 @@ def test_readiness_check_reports_partial_startup_when_agent_exists_but_startup_i
                 "detail": "Application startup has not completed successfully.",
             },
             {
-                "name": "agent_initialized",
+                "name": "harness_initialized",
                 "status": "ok",
-                "detail": "Chat agent is initialized.",
+                "detail": "Chat harness is initialized.",
             },
             {
                 "name": "storage_initialized",
@@ -145,8 +150,8 @@ def test_home_renders_chat_header(client):
 
     assert response.status_code == 200
     assert "Chat with AI Chat" in response.text
-    assert client.app.state.agent.display_name in response.text
-    assert client.app.state.agent.model_display_name in response.text
+    assert client.app.state.chat_harness.identity.display_name in response.text
+    assert client.app.state.chat_harness.identity.model_display_name in response.text
     assert "Ask the first question" in response.text
 
 
@@ -218,8 +223,8 @@ def test_format_chat_list_timestamp_shows_month_and_day_for_older_dates():
     assert "PM" not in formatted
 
 
-def test_home_renders_unavailable_shell_when_agent_is_missing(client):
-    del client.app.state.agent
+def test_home_renders_unavailable_shell_when_harness_is_missing(client):
+    del client.app.state.chat_harness
 
     response = client.get("/")
 
@@ -244,7 +249,7 @@ def test_home_renders_unavailable_shell_when_storage_is_missing(client):
 
 def test_send_message_returns_bot_message_html(client, monkeypatch):
     monkeypatch.setattr(
-        client.app.state.agent, "process_message", lambda _msg, _history=None: "Hello from test"
+        client.app.state.chat_harness, "process_message", lambda _msg, _history=None: "Hello from test"
     )
 
     response = _send_message(client, {"message": "Hi"})
@@ -257,7 +262,7 @@ def test_send_message_returns_bot_message_html(client, monkeypatch):
 
 def test_send_message_sets_anonymous_client_cookie_when_missing(client, monkeypatch):
     monkeypatch.setattr(
-        client.app.state.agent, "process_message", lambda _msg, _history=None: "Hello from test"
+        client.app.state.chat_harness, "process_message", lambda _msg, _history=None: "Hello from test"
     )
 
     response = _send_message(client, {"message": "Hi"})
@@ -269,7 +274,7 @@ def test_send_message_sets_anonymous_client_cookie_when_missing(client, monkeypa
 
 def test_send_message_creates_chat_and_persists_first_turn(client, monkeypatch):
     monkeypatch.setattr(
-        client.app.state.agent, "process_message", lambda _msg, _history=None: "Hello from test"
+        client.app.state.chat_harness, "process_message", lambda _msg, _history=None: "Hello from test"
     )
 
     response = _send_message(client, {"message": "Hi"})
@@ -302,7 +307,7 @@ def test_send_message_replays_duplicate_first_submit_without_duplicate_turns(cli
         call_count["count"] += 1
         return "Hello from test"
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", fake_process_message)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", fake_process_message)
 
     first_response = _send_message(
         client,
@@ -339,7 +344,7 @@ def test_send_message_appends_to_existing_chat_instead_of_creating_another(clien
         call_count["count"] += 1
         return f"Reply {call_count['count']}"
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", fake_process_message)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", fake_process_message)
 
     first_response = _send_message(client, {"message": "Hi"})
     chat_session_id = _extract_chat_session_id(first_response.text)
@@ -376,7 +381,7 @@ def test_send_message_replays_duplicate_existing_chat_submit_without_duplicate_t
         call_count["count"] += 1
         return "Reply 1"
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", fake_process_message)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", fake_process_message)
 
     first_response = _send_message(
         client,
@@ -412,7 +417,7 @@ def test_send_message_passes_prior_transcript_to_agent_in_order(client, monkeypa
         captured_histories.append(list(conversation_history or []))
         return "Reply"
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", fake_process_message)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", fake_process_message)
 
     first_response = _send_message(client, {"message": "First"})
     chat_session_id = _extract_chat_session_id(first_response.text)
@@ -432,7 +437,7 @@ def test_send_message_passes_prior_transcript_to_agent_in_order(client, monkeypa
 
 def test_send_message_returns_generic_not_found_for_missing_or_foreign_chat(client, monkeypatch):
     monkeypatch.setattr(
-        client.app.state.agent, "process_message", lambda _msg, _history=None: "unused"
+        client.app.state.chat_harness, "process_message", lambda _msg, _history=None: "unused"
     )
     client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
     repository = client.app.state.chat_repository
@@ -662,7 +667,7 @@ def test_send_message_persists_user_turn_without_assistant_reply_when_follow_up_
             return "Reply 1"
         raise openai.RateLimitError("rate limit", response=error_response, body={})
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", fake_process_message)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", fake_process_message)
 
     first_response = _send_message(client, {"message": "First"})
     chat_session_id = _extract_chat_session_id(first_response.text)
@@ -704,7 +709,7 @@ def test_send_message_replays_duplicate_failed_first_submit_without_reprocessing
         raise AssertionError("Should replay failure")
 
     monkeypatch.setattr(
-        client.app.state.agent,
+        client.app.state.chat_harness,
         "process_message",
         raise_if_reprocessed,
     )
@@ -748,7 +753,7 @@ def test_send_message_returns_request_in_progress_when_duplicate_request_is_stil
         raise AssertionError("Duplicate request should not invoke the agent.")
 
     monkeypatch.setattr(
-        client.app.state.agent,
+        client.app.state.chat_harness,
         "process_message",
         raise_if_duplicate_reprocessed,
     )
@@ -780,7 +785,7 @@ def test_send_message_returns_409_when_chat_is_deleted_during_in_flight_send(cli
         repository.soft_delete_chat(chat_session_id=chat.id, client_id="client-a")
         return "Reply that should not persist"
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", delete_then_reply)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", delete_then_reply)
 
     response = _send_message(
         client,
@@ -828,7 +833,7 @@ def test_send_message_replays_duplicate_conflicted_request_without_reprocessing(
         raise AssertionError("Duplicate replay should not invoke the agent.")
 
     monkeypatch.setattr(
-        client.app.state.agent,
+        client.app.state.chat_harness,
         "process_message",
         raise_if_conflict_reprocessed,
     )
@@ -860,7 +865,7 @@ def test_send_message_returns_409_when_chat_is_archived_during_in_flight_send(cl
         repository.archive_chat(chat_session_id=chat.id, client_id="client-a")
         return "Reply that should not persist"
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", archive_then_reply)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", archive_then_reply)
 
     response = _send_message(
         client,
@@ -899,7 +904,7 @@ def test_send_message_returns_409_when_chat_is_archived_during_in_flight_failure
         repository.archive_chat(chat_session_id=chat.id, client_id="client-a")
         raise openai.RateLimitError("rate limit", response=error_response, body={})
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", archive_then_raise)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", archive_then_raise)
 
     response = _send_message(
         client,
@@ -932,7 +937,7 @@ def test_send_message_first_message_failure_still_returns_created_chat_session_i
     def raise_rate_limit(_msg, _history=None):
         raise openai.RateLimitError("rate limit", response=error_response, body={})
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", raise_rate_limit)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", raise_rate_limit)
 
     response = _send_message(client, {"message": "First"})
 
@@ -952,8 +957,8 @@ def test_send_message_first_message_failure_still_returns_created_chat_session_i
     assert [message.content for message in messages] == ["First"]
 
 
-def test_send_message_returns_service_unavailable_html_when_agent_is_missing(client):
-    del client.app.state.agent
+def test_send_message_returns_service_unavailable_html_when_harness_is_missing(client):
+    del client.app.state.chat_harness
 
     response = _send_message(client, {"message": "Hi"})
 
@@ -985,29 +990,27 @@ def test_send_message_returns_startup_message_when_startup_is_incomplete(client)
     assert "error-message" in response.text
 
 
-def test_send_message_offloads_blocking_agent_call_from_event_loop(client, monkeypatch):
+def test_send_message_offloads_blocking_harness_call_from_event_loop(client, monkeypatch):
     captured = {"calls": []}
 
-    def fake_process_message(raw_message, conversation_history=None):
-        captured["processed_message"] = raw_message
-        captured["conversation_history"] = conversation_history
-        return "Hello from thread"
+    def fake_run(chat_request):
+        captured["request"] = chat_request
+        return types.SimpleNamespace(output_text="Hello from thread")
 
     async def fake_to_thread(func, *args, **kwargs):
         captured["calls"].append((func, args, kwargs))
         return func(*args, **kwargs)
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", fake_process_message)
+    monkeypatch.setattr(client.app.state.chat_harness, "run", fake_run)
     monkeypatch.setattr(main.asyncio, "to_thread", fake_to_thread)
 
     response = _send_message(client, {"message": "Hi"})
 
     assert response.status_code == 200
-    assert captured["calls"][1][0] is fake_process_message
-    assert captured["calls"][1][1] == ("Hi", [])
+    assert captured["calls"][1][0] is fake_run
     assert captured["calls"][1][2] == {}
-    assert captured["processed_message"] == "Hi"
-    assert captured["conversation_history"] == []
+    assert captured["request"].message == "Hi"
+    assert captured["request"].conversation_history == ()
     assert "Hello from thread" in response.text
 
 
@@ -1031,7 +1034,7 @@ def test_send_message_validation_error_escapes_html(client, monkeypatch):
     def raise_value_error(_msg, _history=None):
         raise ValueError("<b>bad input</b>")
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", raise_value_error)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", raise_value_error)
     response = _send_message(client, {"message": "Hi"})
 
     assert response.status_code == 400
@@ -1046,12 +1049,30 @@ def test_send_message_handles_rate_limit_error(client, monkeypatch):
     def raise_rate_limit(_msg, _history=None):
         raise openai.RateLimitError("rate limit", response=response, body={})
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", raise_rate_limit)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", raise_rate_limit)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 429
     assert "Rate Limit Exceeded" in result.text
     assert 'class="message-body"' in result.text
+
+
+def test_send_message_handles_normalized_harness_failure(client, monkeypatch):
+    def raise_rate_limit_from_harness(_request):
+        raise ChatHarnessExecutionError(
+            ChatHarnessFailure(
+                code="rate_limited",
+                message="busy",
+                retryable=True,
+                detail="synthetic test failure",
+            )
+        )
+
+    monkeypatch.setattr(client.app.state.chat_harness, "run", raise_rate_limit_from_harness)
+    result = _send_message(client, {"message": "Hi"})
+
+    assert result.status_code == 429
+    assert "Rate Limit Exceeded" in result.text
 
 
 def test_send_message_handles_authentication_error(client, monkeypatch):
@@ -1061,7 +1082,7 @@ def test_send_message_handles_authentication_error(client, monkeypatch):
     def raise_auth_error(_msg, _history=None):
         raise openai.AuthenticationError("auth failed", response=response, body={})
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", raise_auth_error)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", raise_auth_error)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 401
@@ -1074,7 +1095,7 @@ def test_send_message_handles_api_connection_error(client, monkeypatch):
     def raise_connection_error(_msg, _history=None):
         raise openai.APIConnectionError(message="conn", request=request)
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", raise_connection_error)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", raise_connection_error)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 503
@@ -1087,7 +1108,7 @@ def test_send_message_handles_api_timeout_error(client, monkeypatch):
     def raise_timeout_error(_msg, _history=None):
         raise openai.APITimeoutError(request=request)
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", raise_timeout_error)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", raise_timeout_error)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 504
@@ -1101,7 +1122,7 @@ def test_send_message_handles_bad_request_error(client, monkeypatch):
     def raise_bad_request_error(_msg, _history=None):
         raise openai.BadRequestError("bad request", response=response, body={})
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", raise_bad_request_error)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", raise_bad_request_error)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 502
@@ -1114,7 +1135,7 @@ def test_send_message_handles_generic_openai_api_error(client, monkeypatch):
     def raise_api_error(_msg, _history=None):
         raise openai.APIError("api failed", request=request, body={})
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", raise_api_error)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", raise_api_error)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 500
@@ -1125,7 +1146,7 @@ def test_send_message_handles_empty_model_response(client, monkeypatch):
     def raise_empty_model_response(_msg, _history=None):
         raise EmptyModelResponseError("AI response did not include any text content")
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", raise_empty_model_response)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", raise_empty_model_response)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 502
@@ -1135,7 +1156,7 @@ def test_send_message_handles_empty_model_response(client, monkeypatch):
 
 def test_send_message_renders_mixed_text_and_code_without_paragraph_wrapping(client, monkeypatch):
     monkeypatch.setattr(
-        client.app.state.agent,
+        client.app.state.chat_harness,
         "process_message",
         lambda _msg, _history=None: "Example:\n```python\nprint('ok')\n```\nDone.",
     )
@@ -1154,7 +1175,7 @@ def test_send_message_handles_runtime_error_without_except_typeerror(client, mon
     def raise_runtime_error(_msg, _history=None):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(client.app.state.agent, "process_message", raise_runtime_error)
+    monkeypatch.setattr(client.app.state.chat_harness, "process_message", raise_runtime_error)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 500
@@ -1164,14 +1185,14 @@ def test_send_message_handles_runtime_error_without_except_typeerror(client, mon
     assert "do not inherit from BaseException" not in result.text
 
 
-def test_get_agent_raises_503_when_agent_is_unavailable(client):
-    del client.app.state.agent
+def test_get_chat_harness_raises_503_when_harness_is_unavailable(client):
+    del client.app.state.chat_harness
 
     with pytest.raises(HTTPException) as exc_info:
-        main._get_agent(types.SimpleNamespace(app=client.app))
+        main._get_chat_harness(types.SimpleNamespace(app=client.app))
 
     assert exc_info.value.status_code == 503
-    assert exc_info.value.detail == "AI agent unavailable"
+    assert exc_info.value.detail == "Chat harness unavailable"
 
 
 def test_render_bot_message_escapes_title_and_applies_error_style():
@@ -1198,20 +1219,25 @@ def test_render_error_message_escapes_body_and_sets_status_code():
     assert "<b>bad</b>" not in response.body.decode()
 
 
-def test_create_app_defers_logging_and_agent_init_until_startup(monkeypatch):
-    calls = {"init_logging": 0, "agent_ctor": 0}
+def test_create_app_defers_logging_and_harness_init_until_startup(monkeypatch):
+    calls = {"init_logging": 0, "harness_ctor": 0}
 
     class FakeAgent:
-        display_name = "Fake Bot"
-        model_display_name = "Fake Model"
-
         def __init__(self, api_key, model, prompt_name, temperature, timeout):
-            calls["agent_ctor"] += 1
+            calls["harness_ctor"] += 1
             self.api_key = api_key
             self.model = model
             self.prompt_name = prompt_name
             self.temperature = temperature
             self.timeout = timeout
+
+        @property
+        def identity(self):
+            return ChatHarnessIdentity(
+                key="fake-harness",
+                display_name="Fake Bot",
+                model_display_name="Fake Model",
+            )
 
         def process_message(self, _msg, _history=None):
             return "unused"
@@ -1224,12 +1250,12 @@ def test_create_app_defers_logging_and_agent_init_until_startup(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
     app = main.create_app()
-    assert calls == {"init_logging": 0, "agent_ctor": 0}
+    assert calls == {"init_logging": 0, "harness_ctor": 0}
 
     with TestClient(app) as startup_client:
-        assert calls == {"init_logging": 1, "agent_ctor": 1}
-        assert startup_client.app.state.agent.display_name == "Fake Bot"
-        assert startup_client.app.state.agent.model == "gpt-5-mini"
+        assert calls == {"init_logging": 1, "harness_ctor": 1}
+        assert startup_client.app.state.chat_harness.identity.display_name == "Fake Bot"
+        assert startup_client.app.state.chat_harness.model == "gpt-5-mini"
 
 
 def test_create_app_fails_with_clear_message_when_openai_key_missing(monkeypatch):

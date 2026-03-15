@@ -101,6 +101,14 @@ class ChatHarnessEvent:
         object.__setattr__(self, "metadata", dict(self.metadata))
 
 
+class ChatHarnessExecutionError(RuntimeError):
+    """Raised when a harness fails with a normalized failure."""
+
+    def __init__(self, failure: ChatHarnessFailure):
+        self.failure = failure
+        super().__init__(failure.message)
+
+
 class ChatHarness(ABC):
     """App-facing contract for harness implementations."""
 
@@ -167,16 +175,29 @@ class BaseAgent(ChatHarness, ABC):
         )
 
     def run(self, request: ChatHarnessRequest) -> ChatHarnessResult:
-        response_text = self.process_message(
-            request.message,
-            conversation_history=request.conversation_history,
-        )
+        try:
+            response_text = self.process_message(
+                request.message,
+                request.conversation_history,
+            )
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise ChatHarnessExecutionError(self.normalize_exception(exc)) from exc
         return ChatHarnessResult(
             output_text=response_text,
             observability=ChatHarnessObservability(
                 model=self.model_display_name,
                 request_id=request.request_id,
             ),
+        )
+
+    def normalize_exception(self, exc: Exception) -> ChatHarnessFailure:
+        return ChatHarnessFailure(
+            code="unexpected_error",
+            message="Harness execution failed.",
+            retryable=False,
+            detail=str(exc),
         )
 
     @abstractmethod
