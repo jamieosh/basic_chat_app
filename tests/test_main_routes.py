@@ -38,6 +38,11 @@ def test_readiness_check_reports_ready_state(client):
                 "status": "ok",
                 "detail": "Chat agent is initialized.",
             },
+            {
+                "name": "storage_initialized",
+                "status": "ok",
+                "detail": "Chat storage is initialized.",
+            },
         ],
     }
 
@@ -60,6 +65,11 @@ def test_readiness_check_returns_503_when_agent_is_missing(client):
                 "name": "agent_initialized",
                 "status": "failed",
                 "detail": "Chat agent is not available to process messages.",
+            },
+            {
+                "name": "storage_initialized",
+                "status": "ok",
+                "detail": "Chat storage is initialized.",
             },
         ],
         "failed_checks": [
@@ -90,6 +100,11 @@ def test_readiness_check_reports_partial_startup_when_agent_exists_but_startup_i
                 "name": "agent_initialized",
                 "status": "ok",
                 "detail": "Chat agent is initialized.",
+            },
+            {
+                "name": "storage_initialized",
+                "status": "ok",
+                "detail": "Chat storage is initialized.",
             },
         ],
         "failed_checks": [
@@ -132,6 +147,17 @@ def test_home_renders_unavailable_shell_when_agent_is_missing(client):
     assert 'id="send-button"' in response.text
 
 
+def test_home_renders_unavailable_shell_when_storage_is_missing(client):
+    del client.app.state.chat_repository
+
+    response = client.get("/")
+
+    assert response.status_code == 503
+    assert "Chat unavailable" in response.text
+    assert "The chat service is temporarily unavailable. Please try again shortly." in response.text
+    assert 'data-chat-available="false"' in response.text
+
+
 def test_send_message_returns_bot_message_html(client, monkeypatch):
     monkeypatch.setattr(client.app.state.agent, "process_message", lambda _msg: "Hello from test")
 
@@ -145,6 +171,17 @@ def test_send_message_returns_bot_message_html(client, monkeypatch):
 
 def test_send_message_returns_service_unavailable_html_when_agent_is_missing(client):
     del client.app.state.agent
+
+    response = client.post("/send-message-htmx", data={"message": "Hi"})
+
+    assert response.status_code == 503
+    assert "Service Unavailable" in response.text
+    assert "The chat service is temporarily unavailable. Please try again shortly." in response.text
+    assert "error-message" in response.text
+
+
+def test_send_message_returns_service_unavailable_html_when_storage_is_missing(client):
+    del client.app.state.chat_repository
 
     response = client.post("/send-message-htmx", data={"message": "Hi"})
 
@@ -471,6 +508,7 @@ def test_create_app_uses_env_driven_cors_configuration():
         openai_prompt_name="default",
         openai_temperature=1.0,
         openai_timeout_seconds=30.0,
+        chat_database_path=Path("data/chat.db"),
         cors_allowed_origins=["https://example.com", "https://internal.example"],
         cors_allow_credentials=True,
         cors_allowed_methods=["GET", "POST"],
@@ -486,3 +524,33 @@ def test_create_app_uses_env_driven_cors_configuration():
         "allow_methods": ["GET", "POST"],
         "allow_headers": ["HX-Request", "Content-Type"],
     }
+
+
+def test_create_app_fails_with_clear_message_when_database_bootstrap_fails(monkeypatch, tmp_path):
+    def fake_init_logging():
+        return None
+
+    broken_parent = tmp_path / "not-a-directory"
+    broken_parent.write_text("file blocks nested db path")
+
+    monkeypatch.setattr(main, "load_project_env", lambda: False)
+    monkeypatch.setattr(main, "init_logging", fake_init_logging)
+
+    settings = RuntimeSettings(
+        openai_api_key="test-key",
+        openai_model="gpt-5-mini",
+        openai_prompt_name="default",
+        openai_temperature=1.0,
+        openai_timeout_seconds=30.0,
+        chat_database_path=broken_parent / "chat.db",
+        cors_allowed_origins=["*"],
+        cors_allow_credentials=False,
+        cors_allowed_methods=["*"],
+        cors_allowed_headers=["*"],
+    )
+
+    app = main.create_app(settings=settings)
+
+    with pytest.raises(StartupDiagnosticsError, match="storage_initialization"):
+        with TestClient(app):
+            pass

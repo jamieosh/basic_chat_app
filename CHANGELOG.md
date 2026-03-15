@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-03-15
+
+### Ship Phase 2 Persistence Foundation
+
+- Added a SQLite-backed persistence package with explicit schema bootstrap for `chat_sessions` and `chat_messages`.
+- Introduced repository helpers for deterministic chat creation, transcript reads, visible-chat listing, and soft delete behavior.
+- Added runtime configuration for `CHAT_DATABASE_PATH`, defaulting to `data/chat.db`, and ignored local database files under `data/`.
+- Wired storage initialization into FastAPI startup and readiness handling so bootstrap failures surface explicitly.
+- Added regression coverage for repository behavior, storage-aware startup/readiness states, and database-path settings validation.
+- Updated setup docs and planning docs to reflect that `P2-01 Conversation Persistence Foundation` is complete.
+
 ## 2026-03-14
 
 ### Complete Phase 1 Documentation Alignment

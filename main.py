@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from agents.openai_agent import EmptyModelResponseError, OpenAIAgent
+from persistence import ChatRepository, StorageInitializationError, bootstrap_database
 from utils.diagnostics import (
     DiagnosticCheck,
     StartupDiagnosticsError,
@@ -78,7 +79,11 @@ def _set_startup_state(app: FastAPI, *, startup_complete: bool) -> None:
 
 
 def _is_chat_service_available(app: FastAPI) -> bool:
-    return bool(getattr(app.state, "startup_complete", False)) and hasattr(app.state, "agent")
+    return (
+        bool(getattr(app.state, "startup_complete", False))
+        and hasattr(app.state, "agent")
+        and hasattr(app.state, "chat_repository")
+    )
 
 
 def _chat_service_unavailable_detail(app: FastAPI) -> str:
@@ -91,6 +96,7 @@ def _readiness_status(app: FastAPI) -> tuple[int, dict[str, object]]:
     return build_readiness_payload(
         startup_complete=bool(getattr(app.state, "startup_complete", False)),
         agent_initialized=hasattr(app.state, "agent"),
+        storage_initialized=hasattr(app.state, "chat_repository"),
     )
 
 
@@ -109,6 +115,8 @@ async def lifespan(app: FastAPI):
     startup_checks = collect_startup_checks(settings)
     try:
         raise_for_failed_startup_checks(startup_checks)
+        bootstrap_database(settings.chat_database_path)
+        app.state.chat_repository = ChatRepository(settings.chat_database_path)
         app.state.agent = OpenAIAgent(
             api_key=settings.openai_api_key or "",
             model=settings.openai_model,
@@ -120,6 +128,19 @@ async def lifespan(app: FastAPI):
         for failure in exc.failures:
             logger.critical("startup.failed check=%s detail=%s", failure.name, failure.detail)
         raise
+    except StorageInitializationError as exc:
+        logger.critical("startup.failed check=storage_initialization detail=%s", str(exc), exc_info=True)
+        raise StartupDiagnosticsError(
+            [
+                DiagnosticCheck(
+                    name="storage_initialization",
+                    ok=False,
+                    detail=(
+                        f"Failed to initialize chat storage at {settings.chat_database_path}. {str(exc)}"
+                    ),
+                )
+            ]
+        ) from exc
     except Exception as exc:
         logger.critical("startup.failed check=agent_initialization detail=%s", str(exc), exc_info=True)
         raise StartupDiagnosticsError(
@@ -144,6 +165,8 @@ async def lifespan(app: FastAPI):
         _set_startup_state(app, startup_complete=False)
         if hasattr(app.state, "agent"):
             del app.state.agent
+        if hasattr(app.state, "chat_repository"):
+            del app.state.chat_repository
         logger.info("startup.shutdown")
 
 
@@ -156,7 +179,10 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        **settings.cors_middleware_kwargs(),
+        allow_origins=settings.cors_allowed_origins,
+        allow_credentials=settings.cors_allow_credentials,
+        allow_methods=settings.cors_allowed_methods,
+        allow_headers=settings.cors_allowed_headers,
     )
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR), check_dir=False), name="static")

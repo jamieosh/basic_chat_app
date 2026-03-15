@@ -10,6 +10,7 @@ def test_get_settings_defaults_match_no_auth_baseline(monkeypatch):
         "OPENAI_PROMPT_NAME",
         "OPENAI_TEMPERATURE",
         "OPENAI_TIMEOUT_SECONDS",
+        "CHAT_DATABASE_PATH",
         "CORS_ALLOWED_ORIGINS",
         "CORS_ALLOW_CREDENTIALS",
         "CORS_ALLOWED_METHODS",
@@ -23,6 +24,7 @@ def test_get_settings_defaults_match_no_auth_baseline(monkeypatch):
     assert settings.openai_prompt_name == "default"
     assert settings.openai_temperature == 1.0
     assert settings.openai_timeout_seconds == 30.0
+    assert settings.chat_database_path == settings_module.PROJECT_ROOT / "data/chat.db"
     assert settings.cors_allowed_origins == ["*"]
     assert settings.cors_allow_credentials is False
     assert settings.cors_allowed_methods == ["*"]
@@ -34,6 +36,7 @@ def test_get_settings_parses_env_driven_configuration(monkeypatch):
     monkeypatch.setenv("OPENAI_PROMPT_NAME", "portable")
     monkeypatch.setenv("OPENAI_TEMPERATURE", "0.7")
     monkeypatch.setenv("OPENAI_TIMEOUT_SECONDS", "12.5")
+    monkeypatch.setenv("CHAT_DATABASE_PATH", "~/tmp/basic-chat-app.sqlite3")
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://example.com, https://internal.example")
     monkeypatch.setenv("CORS_ALLOW_CREDENTIALS", "true")
     monkeypatch.setenv("CORS_ALLOWED_METHODS", "GET,POST")
@@ -45,6 +48,7 @@ def test_get_settings_parses_env_driven_configuration(monkeypatch):
     assert settings.openai_prompt_name == "portable"
     assert settings.openai_temperature == 0.7
     assert settings.openai_timeout_seconds == 12.5
+    assert settings.chat_database_path == settings_module.Path("~/tmp/basic-chat-app.sqlite3").expanduser()
     assert settings.cors_allowed_origins == ["https://example.com", "https://internal.example"]
     assert settings.cors_allow_credentials is True
     assert settings.cors_allowed_methods == ["GET", "POST"]
@@ -86,6 +90,13 @@ def test_get_settings_rejects_non_positive_timeout(monkeypatch, value):
     monkeypatch.setenv("OPENAI_TIMEOUT_SECONDS", value)
 
     with pytest.raises(ValueError, match="OPENAI_TIMEOUT_SECONDS must be greater than 0."):
+        get_settings()
+
+
+def test_get_settings_rejects_database_directory_path(monkeypatch, tmp_path):
+    monkeypatch.setenv("CHAT_DATABASE_PATH", str(tmp_path))
+
+    with pytest.raises(ValueError, match="CHAT_DATABASE_PATH must point to a SQLite database file"):
         get_settings()
 
 

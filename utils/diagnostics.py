@@ -79,7 +79,12 @@ def raise_for_failed_startup_checks(checks: list[DiagnosticCheck]) -> None:
         raise StartupDiagnosticsError(failures)
 
 
-def build_readiness_checks(*, startup_complete: bool, agent_initialized: bool) -> list[DiagnosticCheck]:
+def build_readiness_checks(
+    *,
+    startup_complete: bool,
+    agent_initialized: bool,
+    storage_initialized: bool,
+) -> list[DiagnosticCheck]:
     checks = [
         DiagnosticCheck(
             name="startup_completed",
@@ -99,14 +104,29 @@ def build_readiness_checks(*, startup_complete: bool, agent_initialized: bool) -
                 else "Chat agent is not available to process messages."
             ),
         ),
+        DiagnosticCheck(
+            name="storage_initialized",
+            ok=storage_initialized,
+            detail=(
+                "Chat storage is initialized."
+                if storage_initialized
+                else "Chat storage is not available to process requests."
+            ),
+        ),
     ]
     return checks
 
 
-def build_readiness_payload(*, startup_complete: bool, agent_initialized: bool) -> tuple[int, dict[str, object]]:
+def build_readiness_payload(
+    *,
+    startup_complete: bool,
+    agent_initialized: bool,
+    storage_initialized: bool,
+) -> tuple[int, dict[str, object]]:
     checks = build_readiness_checks(
         startup_complete=startup_complete,
         agent_initialized=agent_initialized,
+        storage_initialized=storage_initialized,
     )
     failures = [check for check in checks if not check.ok]
     payload: dict[str, object] = {

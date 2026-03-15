@@ -6,26 +6,6 @@ See [`plans/PARKING LOT.md`](/Users/jamie/Development/basic_chat_app/plans/PARKI
 
 ## Backlog Items
 
-### P2-01 Conversation Persistence Foundation
-
-Priority: P0
-
-Deliver:
-
-- introduce a storage model for `chat_sessions` and `chat_messages`
-- bootstrap the SQLite schema at startup using standard-library `sqlite3`
-- add runtime configuration for the database path
-- add repository helpers for ordered transcript reads and chat list reads
-
-Acceptance criteria:
-
-- chats and messages can be created, listed, loaded, and deleted in deterministic tests
-- stored chats survive app restarts
-- storage failures produce explicit startup or request-level errors
-
-What the user will see:
-No visible change on its own, but it enables chats to persist instead of disappearing when the app restarts.
-
 ### P2-02 Anonymous Client Identity And Chat Ownership
 
 Priority: P0

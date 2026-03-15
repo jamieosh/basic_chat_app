@@ -18,6 +18,7 @@ Those documents define the long-term direction and maturity phases. This README 
 - In-flight request locking so duplicate submissions are ignored while a response is pending.
 - Inline failure handling for validation, service-unavailable, and transport-error states.
 - OpenAI-backed agent implementation (`gpt-5-mini` by default).
+- SQLite-backed chat storage bootstrap and repository foundation for upcoming Phase 2 history features.
 - Prompt-template-driven system and user prompt construction.
 - Neutral `AI Chat` defaults with no implicit domain context or memory.
 - Safe HTML rendering with fenced code block formatting.
@@ -82,7 +83,12 @@ cp .env.example .env
 OPENAI_API_KEY=your_api_key_here
 ```
 
-5. Run the application:
+5. Optional: override the local SQLite path if you do not want the default `data/chat.db`:
+```dotenv
+CHAT_DATABASE_PATH=data/chat.db
+```
+
+6. Run the application:
 ```bash
 uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
@@ -90,6 +96,7 @@ uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000
 The application will be available at `http://localhost:8000`.
 
 The app loads `.env` from the project root, so startup does not depend on your current working directory once the project is importable.
+The default database directory is created automatically on startup when needed.
 
 ## Dependencies
 
@@ -134,7 +141,7 @@ Maintainer note:
 The default template is for local development and experimentation, not for exposed public deployment.
 
 - no authentication is included
-- no persistence, rate limiting, or CSRF protection is included
+- no authentication, rate limiting, or CSRF protection is included
 - wildcard CORS is part of the current no-auth baseline, with credentials disabled by default
 - deployment hardening is intentionally deferred beyond Phase 1
 
@@ -215,6 +222,7 @@ Supported runtime environment variables:
 - `OPENAI_PROMPT_NAME`: optional prompt template suffix. Default: `default`.
 - `OPENAI_TEMPERATURE`: optional model temperature from `0.0` to `2.0`. Default: `1.0`.
 - `OPENAI_TIMEOUT_SECONDS`: optional OpenAI request timeout. Default: `30`.
+- `CHAT_DATABASE_PATH`: optional SQLite database path. Default: `data/chat.db`.
 - `CORS_ALLOWED_ORIGINS`: comma-separated allowed origins. Default: `*`.
 - `CORS_ALLOW_CREDENTIALS`: enables credentialed CORS requests. Default: `false`.
 - `CORS_ALLOWED_METHODS`: comma-separated allowed HTTP methods. Default: `*`.

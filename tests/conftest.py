@@ -1,6 +1,7 @@
 import os
 import socket
 import subprocess
+import tempfile
 import time
 from urllib.request import urlopen
 
@@ -11,11 +12,24 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 
 import main
+from utils.settings import RuntimeSettings
 
 
 @pytest.fixture
-def client():
-    with TestClient(main.create_app()) as test_client:
+def client(tmp_path):
+    settings = RuntimeSettings(
+        openai_api_key="test-key",
+        openai_model="gpt-5-mini",
+        openai_prompt_name="default",
+        openai_temperature=1.0,
+        openai_timeout_seconds=30.0,
+        chat_database_path=tmp_path / "chat.db",
+        cors_allowed_origins=["*"],
+        cors_allow_credentials=False,
+        cors_allowed_methods=["*"],
+        cors_allowed_headers=["*"],
+    )
+    with TestClient(main.create_app(settings=settings)) as test_client:
         yield test_client
 
 
@@ -47,21 +61,22 @@ def live_server_url():
     base_url = f"http://127.0.0.1:{port}"
     env = os.environ.copy()
     env.setdefault("OPENAI_API_KEY", "test-key")
+    with tempfile.TemporaryDirectory() as temp_dir:
+        env["CHAT_DATABASE_PATH"] = os.path.join(temp_dir, "chat.db")
+        server = subprocess.Popen(
+            ["uv", "run", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(port)],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.STDOUT,
+        )
 
-    server = subprocess.Popen(
-        ["uv", "run", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(port)],
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.STDOUT,
-    )
-
-    try:
-        _wait_for_healthcheck(f"{base_url}/health")
-        yield base_url
-    finally:
-        server.terminate()
         try:
-            server.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            server.kill()
-            server.wait(timeout=5)
+            _wait_for_healthcheck(f"{base_url}/health")
+            yield base_url
+        finally:
+            server.terminate()
+            try:
+                server.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                server.wait(timeout=5)

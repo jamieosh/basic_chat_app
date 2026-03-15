@@ -16,6 +16,7 @@ class RuntimeSettings:
     openai_prompt_name: str
     openai_temperature: float
     openai_timeout_seconds: float
+    chat_database_path: Path
     cors_allowed_origins: list[str]
     cors_allow_credentials: bool
     cors_allowed_methods: list[str]
@@ -41,6 +42,7 @@ def get_settings() -> RuntimeSettings:
         openai_prompt_name=_get_optional_env("OPENAI_PROMPT_NAME") or "default",
         openai_temperature=_get_float_env("OPENAI_TEMPERATURE", default=1.0),
         openai_timeout_seconds=_get_float_env("OPENAI_TIMEOUT_SECONDS", default=30.0),
+        chat_database_path=_get_path_env("CHAT_DATABASE_PATH", default=PROJECT_ROOT / "data/chat.db"),
         cors_allowed_origins=_get_csv_env("CORS_ALLOWED_ORIGINS", default=["*"]),
         cors_allow_credentials=_get_bool_env("CORS_ALLOW_CREDENTIALS", default=False),
         cors_allowed_methods=_get_csv_env("CORS_ALLOWED_METHODS", default=["*"]),
@@ -87,6 +89,14 @@ def _get_csv_env(name: str, *, default: list[str]) -> list[str]:
     return items or list(default)
 
 
+def _get_path_env(name: str, *, default: Path) -> Path:
+    value = _get_optional_env(name)
+    if value is None:
+        return default
+
+    return Path(value).expanduser()
+
+
 def _validate_settings(settings: RuntimeSettings) -> None:
     if settings.cors_allow_credentials and "*" in settings.cors_allowed_origins:
         raise ValueError(
@@ -98,3 +108,6 @@ def _validate_settings(settings: RuntimeSettings) -> None:
 
     if settings.openai_timeout_seconds <= 0:
         raise ValueError("OPENAI_TIMEOUT_SECONDS must be greater than 0.")
+
+    if settings.chat_database_path.exists() and settings.chat_database_path.is_dir():
+        raise ValueError("CHAT_DATABASE_PATH must point to a SQLite database file, not a directory.")

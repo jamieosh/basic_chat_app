@@ -14,6 +14,7 @@ wheels/
 
 # production
 build/
+data/
 
 # debug
 

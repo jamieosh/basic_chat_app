@@ -28,6 +28,7 @@ def test_collect_startup_checks_reports_missing_openai_key(monkeypatch):
             openai_prompt_name="default",
             openai_temperature=1.0,
             openai_timeout_seconds=30.0,
+            chat_database_path=Path("data/chat.db"),
             cors_allowed_origins=["*"],
             cors_allow_credentials=False,
             cors_allowed_methods=["*"],
@@ -50,6 +51,7 @@ def test_collect_startup_checks_uses_configured_prompt_name(monkeypatch):
             openai_prompt_name="portable_baseline",
             openai_temperature=1.0,
             openai_timeout_seconds=30.0,
+            chat_database_path=Path("data/chat.db"),
             cors_allowed_origins=["*"],
             cors_allow_credentials=False,
             cors_allowed_methods=["*"],
@@ -97,6 +99,7 @@ def test_build_readiness_payload_reports_failed_checks():
     status_code, payload = diagnostics.build_readiness_payload(
         startup_complete=False,
         agent_initialized=False,
+        storage_initialized=False,
     )
 
     assert status_code == 503
@@ -113,6 +116,11 @@ def test_build_readiness_payload_reports_failed_checks():
                 "status": "failed",
                 "detail": "Chat agent is not available to process messages.",
             },
+            {
+                "name": "storage_initialized",
+                "status": "failed",
+                "detail": "Chat storage is not available to process requests.",
+            },
         ],
         "failed_checks": [
             {
@@ -124,6 +132,11 @@ def test_build_readiness_payload_reports_failed_checks():
                 "name": "agent_initialized",
                 "status": "failed",
                 "detail": "Chat agent is not available to process messages.",
+            },
+            {
+                "name": "storage_initialized",
+                "status": "failed",
+                "detail": "Chat storage is not available to process requests.",
             },
         ],
     }
