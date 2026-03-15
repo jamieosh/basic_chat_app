@@ -9,7 +9,16 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Sequence
 
-from .base_agent import BaseAgent, ChatHarnessFailure, ConversationTurn
+from .base_agent import (
+    BaseAgent,
+    ChatHarnessExecutionError,
+    ChatHarnessFailure,
+    ChatHarnessIdentity,
+    ChatHarnessObservability,
+    ChatHarnessRequest,
+    ChatHarnessResult,
+    ConversationTurn,
+)
 from utils.logging_config import get_logger
 from utils.prompt_manager import PromptTemplateManager
 
@@ -97,6 +106,42 @@ class OpenAIAgent(BaseAgent):
         
         # Return the display name if it exists, otherwise return the model name
         return model_display_names.get(self.model, self.model)
+
+    @property
+    def identity(self) -> ChatHarnessIdentity:
+        return ChatHarnessIdentity(
+            key="openai",
+            display_name=self.display_name,
+            model_display_name=self.model_display_name,
+            provider_name="openai",
+        )
+
+    def run(self, request: ChatHarnessRequest) -> ChatHarnessResult:
+        try:
+            response_text = self.process_message(
+                request.message,
+                request.conversation_history,
+            )
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise ChatHarnessExecutionError(self.normalize_exception(exc)) from exc
+        return ChatHarnessResult(
+            output_text=response_text,
+            observability=ChatHarnessObservability(
+                model=self.model,
+                provider="openai",
+                request_id=request.request_id,
+                tags={
+                    "harness_key": self.identity.key,
+                    "prompt_name": self.prompt_name,
+                },
+            ),
+            metadata={
+                "model_display_name": self.model_display_name,
+                "prompt_name": self.prompt_name,
+            },
+        )
 
     def normalize_exception(self, exc: Exception) -> ChatHarnessFailure:
         if isinstance(exc, openai.RateLimitError):
