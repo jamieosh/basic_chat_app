@@ -4,7 +4,7 @@ import httpx
 import openai
 import pytest
 
-from agents.base_agent import ConversationTurn
+from agents.base_agent import ChatHarnessExecutionError, ChatHarnessRequest, ConversationTurn
 from agents.openai_agent import EmptyModelResponseError, OpenAIAgent
 
 
@@ -55,6 +55,15 @@ def test_unknown_model_display_name_falls_back_to_model():
     assert agent.model_display_name == "my-custom-model"
 
 
+def test_identity_exposes_openai_harness_metadata():
+    agent = OpenAIAgent(api_key="test-key", model="gpt-5-mini")
+
+    assert agent.identity.key == "openai"
+    assert agent.identity.provider_name == "openai"
+    assert agent.identity.display_name == "AI Chat"
+    assert agent.identity.model_display_name == "GPT-5 Mini"
+
+
 def test_process_message_uses_configured_prompt_name_temperature_and_timeout(tmp_path):
     templates_dir = tmp_path / "templates" / "prompts" / "openai"
     templates_dir.mkdir(parents=True)
@@ -90,6 +99,30 @@ def test_process_message_uses_configured_prompt_name_temperature_and_timeout(tmp
     assert captured["temperature"] == 0.7
     assert captured["timeout"] == 12.5
     assert captured["messages"][0]["content"] == "System prompt"
+
+
+def test_run_returns_chat_harness_result_with_openai_observability():
+    agent = OpenAIAgent(api_key="test-key")
+
+    def fake_create(**_kwargs):
+        return types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="Harness reply"))]
+        )
+
+    agent.client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=fake_create)
+        )
+    )
+
+    result = agent.run(ChatHarnessRequest(message="Hello there", request_id="req-123"))
+
+    assert result.output_text == "Harness reply"
+    assert result.observability.provider == "openai"
+    assert result.observability.model == "gpt-5-mini"
+    assert result.observability.request_id == "req-123"
+    assert result.observability.tags["harness_key"] == "openai"
+    assert result.metadata["model_display_name"] == "GPT-5 Mini"
 
 
 def test_process_message_omits_custom_temperature_for_gpt5_models():
@@ -242,6 +275,57 @@ def test_process_message_raises_when_model_content_is_missing():
 
     with pytest.raises(EmptyModelResponseError, match="did not include any text content"):
         agent.process_message("Hello there")
+
+
+@pytest.mark.parametrize(
+    ("error_factory", "expected_code"),
+    [
+        (
+            lambda request: openai.APIConnectionError(message="conn", request=request),
+            "connection_error",
+        ),
+        (
+            lambda request: openai.RateLimitError(
+                "rate limit",
+                response=httpx.Response(429, request=request),
+                body={},
+            ),
+            "rate_limited",
+        ),
+        (
+            lambda request: openai.AuthenticationError(
+                "auth failed",
+                response=httpx.Response(401, request=request),
+                body={},
+            ),
+            "authentication_failed",
+        ),
+        (
+            lambda request: openai.APIError("api failed", request=request, body={}),
+            "provider_error",
+        ),
+        (
+            lambda request: openai.BadRequestError(
+                "bad request",
+                response=httpx.Response(400, request=request),
+                body={},
+            ),
+            "invalid_request",
+        ),
+        (
+            lambda request: openai.APITimeoutError(request=request),
+            "timeout",
+        ),
+    ],
+)
+def test_run_normalizes_provider_errors(error_factory, expected_code):
+    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    agent = _build_agent_that_raises(error_factory(request))
+
+    with pytest.raises(ChatHarnessExecutionError) as exc_info:
+        agent.run(ChatHarnessRequest(message="Hello there"))
+
+    assert exc_info.value.failure.code == expected_code
 
 
 def test_process_message_reraises_file_not_found_when_system_prompt_lookup_fails():

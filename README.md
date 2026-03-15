@@ -21,7 +21,7 @@ Those documents define the long-term direction and maturity phases. This README 
 - In-flight request locking plus persisted request IDs so duplicate submissions are replayed instead of being processed twice.
 - Lightweight loading feedback while switching chats.
 - Inline failure handling for validation, service-unavailable, and transport-error states.
-- OpenAI-backed agent implementation (`gpt-5-mini` by default).
+- OpenAI-backed chat harness implementation (`gpt-5-mini` by default).
 - SQLite-backed chat storage with per-client chat ownership and transcript persistence across reloads and restarts.
 - Prompt-template-driven system and user prompt construction.
 - Neutral `AI Chat` defaults with no implicit domain context beyond the persisted transcript for the active chat.
@@ -43,7 +43,7 @@ Phase 2 is complete when the default app behaves as a durable, browser-cookie-sc
 The repository has moved well past the original Phase 1 boundary. The notes below stay here as historical context for the startup/configuration baseline that still underpins the current app:
 
 - Startup path resolution is project-root-aware rather than dependent on the shell's current working directory.
-- Runtime behavior is configurable through environment variables instead of route-level or agent-level constants.
+- Runtime behavior is configurable through environment variables instead of route-level or harness-level constants.
 - Default CORS behavior matches the current no-auth posture: wildcard origins are allowed, but credentials stay disabled unless you opt into explicit origins.
 - Prompt/template selection, OpenAI model choice, timeout, and compatible temperature settings can be changed without modifying application code.
 - The browser chat flow prevents duplicate sends, uses a minimal typing indicator during normal requests, and renders degraded-service states inline when the backend is unavailable or a request fails.
@@ -172,9 +172,10 @@ Forks that move beyond trusted local or internal use should plan explicit securi
 
 ```
 basic_chat_app/
-├── agents/                 # AI agent implementations
-│   ├── base_agent.py      # Abstract base agent class
-│   └── openai_agent.py    # OpenAI-specific agent implementation
+├── agents/                 # Chat harness contracts and implementations
+│   ├── base_agent.py      # Legacy compatibility shim and harness re-exports
+│   ├── chat_harness.py    # Core ChatHarness contract and normalized types
+│   └── openai_agent.py    # OpenAI-specific harness implementation
 ├── persistence/           # SQLite bootstrap and chat repository code
 ├── static/                # Static assets
 │   ├── css/              # CSS styles
@@ -245,9 +246,11 @@ uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 
 ### Adding New Features
 
-1. **New Agent Types**: Extend the `BaseAgent` class in `agents/base_agent.py`
+1. **New Harness Types**: Implement `ChatHarness` in `agents/chat_harness.py`. `BaseAgent` remains available only as a compatibility shim for legacy `process_message()` implementations.
 2. **Custom Prompts**: Add new templates in `templates/prompts/<agent_type>/`
 3. **UI Components**: Add new components in `templates/components/`
+
+The application layer should own routing, persistence, idempotent turn lifecycle, and HTML rendering. The harness layer should own normalized request/result/failure contracts, observability metadata, prompt assembly, and provider-facing execution.
 
 ### Configuration
 
@@ -276,7 +279,7 @@ For the default no-auth baseline, keep `CORS_ALLOW_CREDENTIALS=false`. If you en
 
 - Prompts: edit `templates/prompts/openai/` to change the default system or user prompt behavior.
 - Model and runtime settings: use environment variables first, then `utils/settings.py` if you need to change the supported configuration surface.
-- Provider wiring: edit `agents/openai_agent.py` to change OpenAI-specific request construction or swap in a different agent implementation behind the existing app contract.
+- Provider wiring: edit `agents/openai_agent.py` for OpenAI-specific request construction, or add a new implementation in `agents/` behind the `ChatHarness` contract without changing the route layer.
 - Chat UI behavior: edit `templates/components/chat.html`, `static/js/chat.js`, and `static/css/chat.css`.
 - Visual baselines: update `tests/e2e/snapshots/` only when a deliberate UI change is accepted.
 

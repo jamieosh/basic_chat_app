@@ -98,7 +98,7 @@ def test_get_required_startup_paths_uses_configured_prompt_name():
 def test_build_readiness_payload_reports_failed_checks():
     status_code, payload = diagnostics.build_readiness_payload(
         startup_complete=False,
-        agent_initialized=False,
+        harness_initialized=False,
         storage_initialized=False,
     )
 
@@ -112,9 +112,9 @@ def test_build_readiness_payload_reports_failed_checks():
                 "detail": "Application startup has not completed successfully.",
             },
             {
-                "name": "agent_initialized",
+                "name": "harness_initialized",
                 "status": "failed",
-                "detail": "Chat agent is not available to process messages.",
+                "detail": "Chat harness is not available to process messages.",
             },
             {
                 "name": "storage_initialized",
@@ -129,9 +129,9 @@ def test_build_readiness_payload_reports_failed_checks():
                 "detail": "Application startup has not completed successfully.",
             },
             {
-                "name": "agent_initialized",
+                "name": "harness_initialized",
                 "status": "failed",
-                "detail": "Chat agent is not available to process messages.",
+                "detail": "Chat harness is not available to process messages.",
             },
             {
                 "name": "storage_initialized",

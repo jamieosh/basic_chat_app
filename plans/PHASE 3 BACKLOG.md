@@ -8,29 +8,6 @@ The intent is to keep the work incremental: each slice should leave the app runn
 
 ## Proposed Items
 
-### P3-01 Chat Agent Harness Vocabulary And Contracts
-
-Priority: P0
-
-Problem:
-The app still speaks mostly in terms of a concrete provider agent and provider-specific failure modes. That leaves the route layer too aware of OpenAI-specific behavior and gives contributors no durable contract to target when they want to add another chat agent harness implementation.
-
-Deliver:
-
-- define the core harness types for identity, capabilities, execution request, execution result, execution events, observability metadata, and normalized failures
-- establish naming that distinguishes the chat application layer from the harness/provider layers
-- replace or evolve the current `BaseAgent` abstraction into an app-facing chat agent harness contract
-- document which concerns belong to the app layer versus the harness layer
-
-Acceptance criteria:
-
-- the main app-facing execution contract does not reference OpenAI-specific request or exception types
-- the contract is serialization-friendly enough to survive a later service boundary
-- contributors can identify one clear interface to implement for a new harness
-
-What the user sees:
-No major visible UI change, but this creates the architectural seam that later Phase 3 work will use.
-
 ### P3-02 Harness Registry, Startup Wiring, And Chat Binding
 
 Priority: P0

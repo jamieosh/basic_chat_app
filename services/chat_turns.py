@@ -41,23 +41,23 @@ FAILURE_PRESENTATIONS = {
         status_code=503,
         log_event="chat.connection_error",
     ),
-    "bad_request": FailurePresentation(
+    "invalid_request": FailurePresentation(
         title="AI Service Error",
         body="The AI service rejected the request. Please try again later.",
         status_code=502,
-        log_event="chat.bad_request",
+        log_event="chat.invalid_request",
     ),
-    "api_error": FailurePresentation(
+    "provider_error": FailurePresentation(
         title="AI Service Error",
         body="The AI service encountered an error. Please try again later.",
         status_code=500,
-        log_event="chat.api_error",
+        log_event="chat.provider_error",
     ),
-    "empty_model_response": FailurePresentation(
+    "empty_response": FailurePresentation(
         title="AI Service Error",
         body="The AI service returned an empty response. Please try again later.",
         status_code=502,
-        log_event="chat.empty_model_response",
+        log_event="chat.empty_response",
     ),
     "unexpected_error": FailurePresentation(
         title="Unexpected Error",
@@ -70,6 +70,24 @@ FAILURE_PRESENTATIONS = {
         body="This chat changed while the message was being processed. Start a new chat or pick another chat to continue.",
         status_code=409,
         log_event="chat.lifecycle_conflict",
+    ),
+    "bad_request": FailurePresentation(
+        title="AI Service Error",
+        body="The AI service rejected the request. Please try again later.",
+        status_code=502,
+        log_event="chat.invalid_request",
+    ),
+    "api_error": FailurePresentation(
+        title="AI Service Error",
+        body="The AI service encountered an error. Please try again later.",
+        status_code=500,
+        log_event="chat.provider_error",
+    ),
+    "empty_model_response": FailurePresentation(
+        title="AI Service Error",
+        body="The AI service returned an empty response. Please try again later.",
+        status_code=502,
+        log_event="chat.empty_response",
     ),
 }
 

@@ -82,7 +82,7 @@ def raise_for_failed_startup_checks(checks: list[DiagnosticCheck]) -> None:
 def build_readiness_checks(
     *,
     startup_complete: bool,
-    agent_initialized: bool,
+    harness_initialized: bool,
     storage_initialized: bool,
 ) -> list[DiagnosticCheck]:
     checks = [
@@ -96,12 +96,12 @@ def build_readiness_checks(
             ),
         ),
         DiagnosticCheck(
-            name="agent_initialized",
-            ok=agent_initialized,
+            name="harness_initialized",
+            ok=harness_initialized,
             detail=(
-                "Chat agent is initialized."
-                if agent_initialized
-                else "Chat agent is not available to process messages."
+                "Chat harness is initialized."
+                if harness_initialized
+                else "Chat harness is not available to process messages."
             ),
         ),
         DiagnosticCheck(
@@ -120,12 +120,12 @@ def build_readiness_checks(
 def build_readiness_payload(
     *,
     startup_complete: bool,
-    agent_initialized: bool,
+    harness_initialized: bool,
     storage_initialized: bool,
 ) -> tuple[int, dict[str, object]]:
     checks = build_readiness_checks(
         startup_complete=startup_complete,
-        agent_initialized=agent_initialized,
+        harness_initialized=harness_initialized,
         storage_initialized=storage_initialized,
     )
     failures = [check for check in checks if not check.ok]
