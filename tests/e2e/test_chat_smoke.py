@@ -1231,6 +1231,29 @@ def test_visual_desktop_active_chat_shell(page: Page, live_server_url: str) -> N
     _assert_matches_visual_snapshot(page, ".chat-workspace", "chat-workspace-active-desktop.png")
 
 
+def test_desktop_chat_headers_share_aligned_rails(page: Page, live_server_url: str) -> None:
+    page.set_viewport_size({"width": 1440, "height": 1024})
+    page.goto(f"{live_server_url}/")
+    _disable_motion(page)
+    _seed_visual_shell(
+        page,
+        header_html=_active_chat_header_html(),
+        chat_box_html=_active_chat_box_html(),
+        sidebar_html=_sidebar_html(),
+        chat_session_id="1",
+    )
+
+    sidebar_box = page.locator(".chat-sidebar-header").bounding_box()
+    header_box = page.locator("#chat-view-header").bounding_box()
+
+    assert sidebar_box is not None
+    assert header_box is not None
+    assert abs(sidebar_box["y"] - header_box["y"]) <= 1
+    assert abs(
+        (sidebar_box["y"] + sidebar_box["height"]) - (header_box["y"] + header_box["height"])
+    ) <= 1
+
+
 def test_visual_mobile_active_chat_header(page: Page, live_server_url: str) -> None:
     page.set_viewport_size({"width": 390, "height": 844})
     page.goto(f"{live_server_url}/")
