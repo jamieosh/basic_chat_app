@@ -28,9 +28,19 @@ Those documents define the long-term direction and maturity phases. This README 
 - Safe HTML rendering with fenced code block formatting.
 - Responsive frontend suitable for desktop and mobile.
 
-## Phase 1 Baseline Status
+## Phase 2 Complete Means
 
-The portability and configuration baseline is now part of the current default behavior:
+Phase 2 is complete when the default app behaves as a durable, browser-cookie-scoped local-first chat workbench:
+
+- chats persist across reloads and restarts
+- a user can create, revisit, switch, and delete chats from the default UI
+- `/chats/{chat_id}` restores the selected transcript on full page load
+- follow-up turns continue the same persisted chat with deterministic duplicate-request handling
+- the default shell remains HTMX-first, server-rendered, and straightforward to extend
+
+## Historical Phase 1 Baseline
+
+The repository has moved well past the original Phase 1 boundary. The notes below stay here as historical context for the startup/configuration baseline that still underpins the current app:
 
 - Startup path resolution is project-root-aware rather than dependent on the shell's current working directory.
 - Runtime behavior is configurable through environment variables instead of route-level or agent-level constants.
@@ -38,11 +48,11 @@ The portability and configuration baseline is now part of the current default be
 - Prompt/template selection, OpenAI model choice, timeout, and compatible temperature settings can be changed without modifying application code.
 - The browser chat flow prevents duplicate sends, uses a minimal typing indicator during normal requests, and renders degraded-service states inline when the backend is unavailable or a request fails.
 
-## Phase 1 Complete Means
+## Historical Phase 1 Completion Criteria
 
-Phase 1 is complete when a contributor can clone the repository, set `OPENAI_API_KEY`, run the app, and successfully chat through the default web UI without changing code.
+Phase 1 was considered complete once a contributor could clone the repository, set `OPENAI_API_KEY`, run the app, and successfully chat through the default web UI without changing code.
 
-The completed Phase 1 baseline is:
+At that Phase 1 boundary, the completed baseline was:
 
 - single-turn request/response chat only
 - deterministic validation and inline request-failure handling
@@ -50,7 +60,7 @@ The completed Phase 1 baseline is:
 - no frontend build step required for the default UI
 - clear extension seams for prompts, provider wiring, and chat UI behavior
 
-Phase 1 does not include:
+At that time, Phase 1 did not include:
 
 - authentication
 - multi-chat continuity or persisted history
@@ -198,6 +208,13 @@ Install Playwright Chromium (required for `tests/e2e/test_chat_smoke.py`):
 uv run playwright install chromium
 ```
 
+Test suite layout:
+
+- `tests/test_chat_repository.py`: repository persistence, visibility, and turn-request lifecycle coverage.
+- `tests/test_chat_turn_service.py`: idempotency and conflict behavior through the service boundary.
+- `tests/test_main_routes.py`: route-level request, replay, lifecycle, and error rendering behavior.
+- `tests/e2e/test_chat_smoke.py`: Playwright coverage for the browser shell, send flow, restore behavior, and visual baselines.
+
 Run the frontend smoke test only:
 ```bash
 uv run python -m pytest tests/e2e -q
@@ -212,6 +229,8 @@ Refresh the committed visual baselines after an intentional UI change:
 ```bash
 UPDATE_VISUAL_BASELINES=1 uv run python -m pytest tests/e2e/test_chat_smoke.py -q -k "visual_"
 ```
+
+Only update `tests/e2e/snapshots/` when a deliberate UI change is accepted. Snapshot churn should not be used to paper over unintended markup or styling regressions.
 
 Run lint and type checks:
 ```bash

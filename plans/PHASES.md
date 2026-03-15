@@ -18,11 +18,11 @@ Phase 1 intentionally does not include authentication, persisted multi-chat cont
 
 --
 
-### 2. Conversation Continuity And Chat Lifecycle
+### 2. Conversation Continuity And Chat Lifecycle (Completed)
 
-This phase introduces practical conversation management by adding multiple chats and a clear chat lifecycle model without requiring authentication as a baseline concern. Users can start new chats, return to old ones, and manage chat history in a way that supports real workflow continuity. The goal is to mature usefulness without adding unnecessary deployment or security complexity, preserving the same out-of-box usability while making the app a more realistic base for product experimentation.
+This phase introduced practical conversation management by adding multiple chats and a clear chat lifecycle model without requiring authentication as a baseline concern. Users can start new chats, return to old ones, and manage chat history in a way that supports real workflow continuity. The goal was to mature usefulness without adding unnecessary deployment or security complexity, preserving the same out-of-box usability while making the app a more realistic base for product experimentation.
 
-For the first cut of Phase 2, the intended lifecycle is intentionally lightweight:
+The shipped Phase 2 lifecycle is intentionally lightweight:
 
 - chats are browser-cookie scoped rather than account scoped
 - users can delete chats from the UI

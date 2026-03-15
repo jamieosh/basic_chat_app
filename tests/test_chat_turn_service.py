@@ -60,6 +60,66 @@ def test_chat_turn_service_finalize_failure_keeps_user_turn_and_marks_request_fa
     assert failed_state.user_message.content == "Hello"
 
 
+def test_chat_turn_service_replays_duplicate_processing_request_state(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    service = ChatTurnService(repository)
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-processing",
+        chat_session_id=None,
+        message="Hello",
+    )
+    duplicate_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-processing",
+        chat_session_id=None,
+        message="Should not create a second turn",
+    )
+
+    assert start_result.outcome == "started"
+    assert duplicate_result.outcome == "duplicate"
+    assert duplicate_result.turn_request_state is not None
+    assert duplicate_result.turn_request_state.turn_request.status == "processing"
+    assert duplicate_result.turn_request_state.user_message.content == "Hello"
+    assert duplicate_result.turn_request_state.assistant_message is None
+
+
+def test_chat_turn_service_replays_duplicate_failed_request_state(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    service = ChatTurnService(repository)
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-failed",
+        chat_session_id=None,
+        message="Hello",
+    )
+    failed_state = service.fail_turn(
+        client_id="client-a",
+        request_id="request-failed",
+        failure_code="rate_limited",
+    )
+    duplicate_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-failed",
+        chat_session_id=None,
+        message="Should replay failure",
+    )
+
+    assert start_result.outcome == "started"
+    assert failed_state.turn_request.status == "failed"
+    assert duplicate_result.outcome == "duplicate"
+    assert duplicate_result.turn_request_state is not None
+    assert duplicate_result.turn_request_state.turn_request.status == "failed"
+    assert duplicate_result.turn_request_state.turn_request.failure_code == "rate_limited"
+    assert duplicate_result.turn_request_state.assistant_message is None
+
+
 def test_chat_turn_service_marks_request_conflicted_when_chat_is_deleted_mid_flight(tmp_path):
     db_path = tmp_path / "chat.db"
     bootstrap_database(db_path)
@@ -85,6 +145,71 @@ def test_chat_turn_service_marks_request_conflicted_when_chat_is_deleted_mid_fli
     assert conflicted_state.turn_request.failure_code == "chat_unavailable"
     assert conflicted_state.assistant_message is None
     assert conflicted_state.user_message.content == "Delete me"
+
+
+def test_chat_turn_service_replays_duplicate_conflicted_request_state(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    service = ChatTurnService(repository)
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-conflicted",
+        chat_session_id=chat.id,
+        message="Archive me",
+    )
+    repository.archive_chat(chat_session_id=chat.id, client_id="client-a")
+    conflicted_state = service.complete_turn(
+        client_id="client-a",
+        request_id="request-conflicted",
+        assistant_content="This should not persist",
+    )
+    duplicate_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-conflicted",
+        chat_session_id=chat.id,
+        message="Should replay conflict",
+    )
+
+    assert start_result.outcome == "started"
+    assert conflicted_state.turn_request.status == "conflicted"
+    assert conflicted_state.turn_request.failure_code == "chat_unavailable"
+    assert duplicate_result.outcome == "duplicate"
+    assert duplicate_result.turn_request_state is not None
+    assert duplicate_result.turn_request_state.turn_request.status == "conflicted"
+    assert duplicate_result.turn_request_state.turn_request.failure_code == "chat_unavailable"
+    assert duplicate_result.turn_request_state.assistant_message is None
+
+
+def test_chat_turn_service_marks_request_conflicted_when_chat_is_archived_mid_flight_failure(
+    tmp_path,
+):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    service = ChatTurnService(repository)
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-archived-failure",
+        chat_session_id=chat.id,
+        message="Archive me",
+    )
+    repository.archive_chat(chat_session_id=chat.id, client_id="client-a")
+    conflicted_state = service.fail_turn(
+        client_id="client-a",
+        request_id="request-archived-failure",
+        failure_code="rate_limited",
+    )
+
+    assert start_result.outcome == "started"
+    assert conflicted_state.turn_request.status == "conflicted"
+    assert conflicted_state.turn_request.failure_code == "chat_unavailable"
+    assert conflicted_state.assistant_message is None
+    assert conflicted_state.user_message.content == "Archive me"
 
 
 def test_chat_turn_service_rejects_missing_or_hidden_target_chat_at_request_start(tmp_path):

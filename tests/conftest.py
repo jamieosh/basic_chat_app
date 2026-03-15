@@ -3,6 +3,8 @@ import socket
 import subprocess
 import tempfile
 import time
+from dataclasses import dataclass
+from pathlib import Path
 from urllib.request import urlopen
 
 import pytest
@@ -13,6 +15,12 @@ os.environ.setdefault("OPENAI_API_KEY", "test-key")
 
 import main
 from utils.settings import RuntimeSettings
+
+
+@dataclass(frozen=True)
+class LiveServer:
+    base_url: str
+    database_path: Path
 
 
 @pytest.fixture
@@ -56,12 +64,13 @@ def _wait_for_healthcheck(url: str, timeout_seconds: float = 10.0) -> None:
 
 
 @pytest.fixture(scope="session")
-def live_server_url():
+def live_server():
     port = _find_free_port()
     base_url = f"http://127.0.0.1:{port}"
     env = os.environ.copy()
     env.setdefault("OPENAI_API_KEY", "test-key")
     with tempfile.TemporaryDirectory() as temp_dir:
+        database_path = Path(temp_dir) / "chat.db"
         env["CHAT_DATABASE_PATH"] = os.path.join(temp_dir, "chat.db")
         server = subprocess.Popen(
             ["uv", "run", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(port)],
@@ -72,7 +81,7 @@ def live_server_url():
 
         try:
             _wait_for_healthcheck(f"{base_url}/health")
-            yield base_url
+            yield LiveServer(base_url=base_url, database_path=database_path)
         finally:
             server.terminate()
             try:
@@ -80,3 +89,8 @@ def live_server_url():
             except subprocess.TimeoutExpired:
                 server.kill()
                 server.wait(timeout=5)
+
+
+@pytest.fixture(scope="session")
+def live_server_url(live_server):
+    return live_server.base_url

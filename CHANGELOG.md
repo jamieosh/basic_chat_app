@@ -2,6 +2,14 @@
 
 ## 2026-03-15
 
+### Ship Phase 2 Test And Documentation Expansion
+
+- Added repository, service, and route regression coverage for replayed `failed` and `conflicted` requests, duplicate `processing` requests, archived target rejection, and archived mid-flight conflict handling.
+- Expanded the Playwright test harness with a test-only live-server fixture that exposes the temporary SQLite database path for deterministic persisted-chat seeding.
+- Added live-app browser coverage for restoring an existing chat after a full refresh or direct `/chats/{chat_id}` revisit, and verified follow-up sends stay attached to the restored chat.
+- Updated contributor-facing docs to reflect the shipped Phase 2 multi-chat baseline and documented the visual snapshot workflow more explicitly.
+- Moved `P2-08 Test And Documentation Expansion` out of the active Phase 2 backlog and into the Phase 2 done record.
+
 ### Ship Phase 2 Concurrency, Integrity, And Failure-Mode Hardening
 
 - Reworked the `/send-message-htmx` lifecycle around transactional repository helpers and a dedicated chat-turn service so the route no longer coordinates raw multi-step write sequencing.

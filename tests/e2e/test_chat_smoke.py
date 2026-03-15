@@ -6,6 +6,9 @@ from urllib.parse import parse_qs
 
 from playwright.sync_api import Page, expect
 
+from persistence import ChatRepository
+from utils.client_identity import CLIENT_ID_COOKIE_NAME
+
 
 VISUAL_SNAPSHOT_DIR = Path(__file__).resolve().parent / "snapshots"
 
@@ -244,6 +247,83 @@ def _active_chat_box_html() -> str:
     ).strip()
 
 
+def _seed_persisted_chat(db_path: Path, *, client_id: str) -> tuple[int, int]:
+    repository = ChatRepository(db_path)
+    older_chat = repository.create_chat(client_id=client_id, title="Chat 1")
+    repository.create_message(
+        chat_session_id=older_chat.id,
+        client_id=client_id,
+        role="user",
+        content="Earlier message",
+    )
+    active_chat = repository.create_chat(client_id=client_id, title="Chat 2")
+    repository.create_message(
+        chat_session_id=active_chat.id,
+        client_id=client_id,
+        role="user",
+        content="Persisted question",
+    )
+    repository.create_message(
+        chat_session_id=active_chat.id,
+        client_id=client_id,
+        role="assistant",
+        content="Persisted answer",
+    )
+    return older_chat.id, active_chat.id
+
+
+def _assert_restored_chat_state(page: Page, *, active_chat_id: int) -> None:
+    expect(page.locator("#chat-box")).to_contain_text("Persisted question")
+    expect(page.locator("#chat-box")).to_contain_text("Persisted answer")
+    expect(page.locator("#chat-session-id")).to_have_value(str(active_chat_id))
+    expect(page.locator(f'[data-chat-id="{active_chat_id}"]')).to_have_attribute(
+        "aria-current",
+        "page",
+    )
+
+
+def _assert_follow_up_send_reuses_restored_chat_session(
+    page: Page,
+    *,
+    active_chat_id: int,
+    expected_message: str,
+) -> None:
+    requests: list[str] = []
+
+    def handle_send(route) -> None:
+        requests.append(route.request.post_data or "")
+        route.fulfill(
+            status=200,
+            content_type="text/html",
+            body=f"""
+            <div class="message bot-message">
+                <div class="message-content">
+                    <div class="message-body">Follow-up reply</div>
+                    <div class="message-timestamp">10:15 AM</div>
+                </div>
+            </div>
+            <input
+                type="hidden"
+                id="chat-session-id"
+                name="chat_session_id"
+                value="{active_chat_id}"
+                hx-swap-oob="true"
+            >
+            """,
+        )
+
+    page.route("**/send-message-htmx", handle_send)
+    page.fill("#message-input", expected_message)
+    page.click("#chat-form button[type='submit']")
+
+    expect(page.locator("#chat-box")).to_contain_text(expected_message)
+    expect(page.locator("#chat-box")).to_contain_text("Follow-up reply")
+    assert len(requests) == 1
+    payload = parse_qs(requests[0])
+    assert payload["chat_session_id"][0] == str(active_chat_id)
+    assert payload["request_id"][0] != ""
+
+
 def test_chat_page_load_and_send_flow(page: Page, live_server_url: str) -> None:
     page.route(
         "**/send-message-htmx",
@@ -409,6 +489,65 @@ def test_chat_reuses_chat_session_id_for_second_send_without_reload(
     assert first_payload["request_id"][0] == initial_request_id
     assert second_payload["request_id"][0] == first_rotated_request_id
     assert first_payload["request_id"][0] != second_payload["request_id"][0]
+
+
+def test_chat_refresh_restores_existing_chat_transcript_and_follow_up_send(
+    page: Page, live_server
+) -> None:
+    client_id = "refresh-client"
+    _older_chat_id, active_chat_id = _seed_persisted_chat(
+        live_server.database_path,
+        client_id=client_id,
+    )
+    page.context.add_cookies(
+        [
+            {
+                "name": CLIENT_ID_COOKIE_NAME,
+                "value": client_id,
+                "url": live_server.base_url,
+            }
+        ]
+    )
+
+    page.goto(f"{live_server.base_url}/chats/{active_chat_id}")
+    _assert_restored_chat_state(page, active_chat_id=active_chat_id)
+
+    page.reload()
+    _assert_restored_chat_state(page, active_chat_id=active_chat_id)
+    _assert_follow_up_send_reuses_restored_chat_session(
+        page,
+        active_chat_id=active_chat_id,
+        expected_message="Follow-up after refresh",
+    )
+
+
+def test_chat_direct_revisit_restores_existing_chat_transcript_and_follow_up_send(
+    page: Page, live_server
+) -> None:
+    client_id = "revisit-client"
+    _older_chat_id, active_chat_id = _seed_persisted_chat(
+        live_server.database_path,
+        client_id=client_id,
+    )
+    page.context.add_cookies(
+        [
+            {
+                "name": CLIENT_ID_COOKIE_NAME,
+                "value": client_id,
+                "url": live_server.base_url,
+            }
+        ]
+    )
+
+    revisit_page = page.context.new_page()
+    revisit_page.goto(f"{live_server.base_url}/chats/{active_chat_id}")
+
+    _assert_restored_chat_state(revisit_page, active_chat_id=active_chat_id)
+    _assert_follow_up_send_reuses_restored_chat_session(
+        revisit_page,
+        active_chat_id=active_chat_id,
+        expected_message="Follow-up after revisit",
+    )
 
 
 def test_chat_swaps_server_error_message_into_chat(page: Page, live_server_url: str) -> None:

@@ -1,6 +1,6 @@
 # Phase 2 Design
 
-This document captures the intended Phase 2 product shape so implementation work can stay consistent across backlog items.
+This document captures the Phase 2 product shape that was implemented so contributors can keep shipped behavior consistent during later work.
 
 See [`plans/PHASE 2 BACKLOG.md`](/Users/jamie/Development/basic_chat_app/plans/PHASE%202%20BACKLOG.md) for the delivery slices.
 

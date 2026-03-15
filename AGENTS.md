@@ -2,21 +2,27 @@
 
 ## Last Reviewed
 
-- 2026-03-14
+- 2026-03-15
 
 ## Project Summary
 
-This repository is a basic FastAPI + HTMX chat application that sends user messages to OpenAI and renders responses in a simple web UI.
+This repository is a FastAPI + HTMX chat workbench with persisted multi-turn chats, route-backed chat restoration, and OpenAI-backed responses.
 
 Current stage:
-- MVP/demo quality
-- Works as a single-turn request/response chat loop
-- Not a full production chat system yet
+- Phase 2 baseline complete
+- Multi-chat, persisted, browser-cookie-scoped local-first chat experience
+- Still not a full production chat platform
 
 ## What The App Does
 
 - Serves a chat page at `/`
+- Redirects `/` into the latest visible chat for the current browser/client when one exists
+- Serves chat pages at `/chats/{chat_id}` and a start screen at `/chat-start`
+- Renders transcript and chat-list partials for HTMX navigation updates
 - Accepts message submissions at `/send-message-htmx`
+- Persists user/assistant turns in SQLite and restores transcripts after reload or direct URL revisit
+- Prevents duplicate request processing with persisted request IDs and conflict-aware replay
+- Supports chat delete while keeping archive backend-only in Phase 2
 - Calls OpenAI (currently `gpt-5-mini`) through `agents/openai_agent.py`
 - Formats text/code-block output into HTML
 - Returns inline bot message HTML for HTMX insertion
@@ -27,10 +33,15 @@ Current stage:
 - `main.py`
   - FastAPI app setup
   - CORS/static/template setup
-  - Routes and response/error rendering
+  - Full page routes, HTMX partial routes, send lifecycle, and response/error rendering
 - `agents/`
   - `base_agent.py`: abstract interface
   - `openai_agent.py`: OpenAI implementation
+- `services/`
+  - `chat_turns.py`: turn-request lifecycle, failure mapping, and idempotent replay contract
+- `persistence/`
+  - `db.py`: SQLite bootstrap
+  - `repository.py`: chat, message, and turn-request persistence helpers
 - `utils/`
   - `prompt_manager.py`: Jinja template loading for system/user prompts
   - `html_formatter.py`: escapes output and formats basic markdown code fences
@@ -66,26 +77,29 @@ Current stage:
 
 ## Product/Behavior Notes
 
-- This is mostly stateless from a chat perspective:
-  - It does not maintain multi-turn conversation history across requests.
+- Chats are persisted in SQLite and scoped to an anonymous browser cookie.
+- Existing chat URLs restore the saved transcript on full page load.
+- Follow-up sends append to the same persisted chat until the user starts a new chat or switches chats.
+- Duplicate request IDs replay the stored outcome instead of creating duplicate turns.
 - Prompting is template-driven:
   - System prompt and optional context prompt are loaded from `templates/prompts/openai/`.
-- UI is optimized for a simple “send message -> append answer” flow with HTMX.
+- UI stays server-rendered and HTMX-first rather than introducing SPA-owned chat state.
 
 ## Known Gaps (Important)
 
-- No auth, persistence, rate controls, or streaming response support.
+- No auth, user-facing archive browsing, rate controls, or streaming response support.
 
 ## Guidance For Future Contributors
 
 - Keep changes minimal and end-to-end verifiable.
 - Preserve the HTMX contract:
   - `/send-message-htmx` should return a message HTML snippet for append.
-- If you add memory/history, decide whether it is:
-  - client-side only, server session-based, or database-backed.
+- Keep the route-backed restore behavior and hidden `chat_session_id` wiring intact when editing the shell.
 - If you update model behavior, keep prompt templates and model naming in sync.
 - Add tests for:
+  - repository/service lifecycle behavior
   - route error paths
+  - restore/revisit browser behavior when routing changes
   - prompt loading/rendering
   - message formatting behavior
 
@@ -94,7 +108,11 @@ Current stage:
 Current tests are located in `tests/` and use `pytest`.
 
 - `tests/test_main_routes.py`
-  - Verifies `/`, `/health`, and basic `/send-message-htmx` behavior.
+  - Verifies page routes, HTMX partials, send replay/conflict paths, and error rendering.
+- `tests/test_chat_repository.py`
+  - Verifies chat/message persistence plus turn-request lifecycle storage behavior.
+- `tests/test_chat_turn_service.py`
+  - Verifies idempotent replay and lifecycle conflict behavior through the service layer.
 - `tests/test_openai_agent.py`
   - Verifies prompt/message construction and input validation.
 - `tests/test_prompt_manager.py`
@@ -102,12 +120,15 @@ Current tests are located in `tests/` and use `pytest`.
 - `tests/test_html_formatter.py`
   - Verifies escaping and fenced code-block formatting.
 - `tests/e2e/test_chat_smoke.py`
-  - Browser smoke test for page load and message send flow (Playwright).
+  - Browser coverage for page load, send flow, restore/revisit behavior, and visual snapshots (Playwright).
 
 Run tests with:
 - `uv run python -m pytest`
 - E2E prerequisite:
   - `uv run playwright install chromium`
+- Visual regression workflow:
+  - run `uv run python -m pytest tests/e2e/test_chat_smoke.py -q -k "visual_"`
+  - refresh `tests/e2e/snapshots/` only for deliberate UI changes via `UPDATE_VISUAL_BASELINES=1 uv run python -m pytest tests/e2e/test_chat_smoke.py -q -k "visual_"`
 
 ## CI Quality Gates
 

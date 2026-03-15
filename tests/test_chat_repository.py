@@ -101,6 +101,29 @@ def test_chat_repository_generates_next_default_title_per_client(tmp_path):
     assert repository.next_default_chat_title(client_id="client-b") == "Chat 2"
 
 
+def test_chat_repository_start_turn_uses_default_title_helper(monkeypatch, tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+
+    monkeypatch.setattr(
+        repository,
+        "_next_default_chat_title",
+        lambda _connection, *, client_id: f"Seeded title for {client_id}",
+    )
+
+    start_result = repository.start_turn_request(
+        client_id="client-a",
+        request_id="request-title-seam",
+        chat_session_id=None,
+        message="Hello",
+    )
+
+    assert start_result.outcome == "started"
+    assert start_result.chat_session is not None
+    assert start_result.chat_session.title == "Seeded title for client-a"
+
+
 def test_chat_repository_keeps_default_title_sequence_after_delete_and_archive(tmp_path):
     db_path = tmp_path / "chat.db"
     bootstrap_database(db_path)
@@ -157,3 +180,132 @@ def test_chat_repository_rejects_messages_for_missing_or_hidden_chat(tmp_path):
         assert str(chat.id) in str(exc)
     else:  # pragma: no cover - defensive for a required error path
         raise AssertionError("Expected LookupError when appending to a deleted chat.")
+
+
+def test_chat_repository_replays_duplicate_processing_turn_request_without_new_writes(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+
+    start_result = repository.start_turn_request(
+        client_id="client-a",
+        request_id="request-1",
+        chat_session_id=None,
+        message="Hello",
+    )
+    duplicate_result = repository.start_turn_request(
+        client_id="client-a",
+        request_id="request-1",
+        chat_session_id=None,
+        message="Hello again",
+    )
+
+    assert start_result.outcome == "started"
+    assert duplicate_result.outcome == "duplicate"
+    assert duplicate_result.turn_request_state is not None
+    assert duplicate_result.turn_request_state.turn_request.status == "processing"
+    assert duplicate_result.turn_request_state.user_message.content == "Hello"
+    assert duplicate_result.turn_request_state.assistant_message is None
+    assert [chat.title for chat in repository.list_visible_chats(client_id="client-a")] == ["Chat 1"]
+    assert [
+        message.content
+        for message in repository.list_messages_for_chat(
+            chat_session_id=start_result.chat_session.id,
+            client_id="client-a",
+        )
+    ] == ["Hello"]
+
+
+def test_chat_repository_replays_duplicate_failed_turn_request_state(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+
+    start_result = repository.start_turn_request(
+        client_id="client-a",
+        request_id="request-2",
+        chat_session_id=None,
+        message="Hello",
+    )
+    failed_state = repository.finalize_turn_failure(
+        client_id="client-a",
+        request_id="request-2",
+        failure_code="rate_limited",
+    )
+    duplicate_result = repository.start_turn_request(
+        client_id="client-a",
+        request_id="request-2",
+        chat_session_id=None,
+        message="Should replay failure",
+    )
+
+    assert start_result.outcome == "started"
+    assert failed_state.turn_request.status == "failed"
+    assert duplicate_result.outcome == "duplicate"
+    assert duplicate_result.turn_request_state is not None
+    assert duplicate_result.turn_request_state.turn_request.status == "failed"
+    assert duplicate_result.turn_request_state.turn_request.failure_code == "rate_limited"
+    assert duplicate_result.turn_request_state.user_message.content == "Hello"
+    assert duplicate_result.turn_request_state.assistant_message is None
+
+
+def test_chat_repository_replays_duplicate_conflicted_turn_request_state(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+
+    start_result = repository.start_turn_request(
+        client_id="client-a",
+        request_id="request-3",
+        chat_session_id=chat.id,
+        message="Archive me",
+    )
+    assert repository.archive_chat(chat_session_id=chat.id, client_id="client-a") is True
+    conflicted_state = repository.finalize_turn_success(
+        client_id="client-a",
+        request_id="request-3",
+        assistant_content="This should not persist",
+    )
+    duplicate_result = repository.start_turn_request(
+        client_id="client-a",
+        request_id="request-3",
+        chat_session_id=chat.id,
+        message="Should replay conflict",
+    )
+
+    assert start_result.outcome == "started"
+    assert conflicted_state.turn_request.status == "conflicted"
+    assert conflicted_state.turn_request.failure_code == "chat_unavailable"
+    assert duplicate_result.outcome == "duplicate"
+    assert duplicate_result.turn_request_state is not None
+    assert duplicate_result.turn_request_state.turn_request.status == "conflicted"
+    assert duplicate_result.turn_request_state.turn_request.failure_code == "chat_unavailable"
+    assert duplicate_result.turn_request_state.user_message.content == "Archive me"
+    assert duplicate_result.turn_request_state.assistant_message is None
+
+
+def test_chat_repository_marks_failed_turn_conflicted_when_chat_is_archived_mid_flight(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+
+    start_result = repository.start_turn_request(
+        client_id="client-a",
+        request_id="request-4",
+        chat_session_id=chat.id,
+        message="Keep the user turn",
+    )
+    assert repository.archive_chat(chat_session_id=chat.id, client_id="client-a") is True
+    conflicted_state = repository.finalize_turn_failure(
+        client_id="client-a",
+        request_id="request-4",
+        failure_code="rate_limited",
+    )
+
+    assert start_result.outcome == "started"
+    assert conflicted_state.turn_request.status == "conflicted"
+    assert conflicted_state.turn_request.failure_code == "chat_unavailable"
+    assert conflicted_state.user_message.content == "Keep the user turn"
+    assert conflicted_state.assistant_message is None

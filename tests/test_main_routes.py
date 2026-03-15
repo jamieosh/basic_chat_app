@@ -437,10 +437,16 @@ def test_send_message_returns_generic_not_found_for_missing_or_foreign_chat(clie
     client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
     repository = client.app.state.chat_repository
     foreign_chat = repository.create_chat(client_id="client-b", title="Other chat")
+    archived_chat = repository.create_chat(client_id="client-a", title="Archived")
+    repository.archive_chat(chat_session_id=archived_chat.id, client_id="client-a")
 
     foreign_response = _send_message(
         client,
         {"message": "Hi", "chat_session_id": str(foreign_chat.id)},
+    )
+    archived_response = _send_message(
+        client,
+        {"message": "Hi", "chat_session_id": str(archived_chat.id)},
     )
     missing_response = _send_message(
         client,
@@ -448,8 +454,10 @@ def test_send_message_returns_generic_not_found_for_missing_or_foreign_chat(clie
     )
 
     assert foreign_response.status_code == 404
+    assert archived_response.status_code == 404
     assert missing_response.status_code == 404
     assert foreign_response.text == missing_response.text
+    assert archived_response.text == missing_response.text
     assert "The requested chat could not be found." in foreign_response.text
 
 
@@ -676,6 +684,92 @@ def test_send_message_persists_user_turn_without_assistant_reply_when_follow_up_
     assert [message.role for message in messages] == ["user", "assistant", "user"]
 
 
+def test_send_message_replays_duplicate_failed_first_submit_without_reprocessing(client, monkeypatch):
+    chat_turn_service = client.app.state.chat_turn_service
+
+    start_result = chat_turn_service.start_turn(
+        client_id="client-a",
+        request_id="duplicate-failed-first-request",
+        chat_session_id=None,
+        message="First",
+    )
+    failed_state = chat_turn_service.fail_turn(
+        client_id="client-a",
+        request_id="duplicate-failed-first-request",
+        failure_code="rate_limited",
+    )
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+
+    def raise_if_reprocessed(*_args, **_kwargs):
+        raise AssertionError("Should replay failure")
+
+    monkeypatch.setattr(
+        client.app.state.agent,
+        "process_message",
+        raise_if_reprocessed,
+    )
+
+    response = _send_message(
+        client,
+        {"message": "First", "request_id": "duplicate-failed-first-request"},
+    )
+
+    assert start_result.outcome == "started"
+    assert failed_state.turn_request.status == "failed"
+    assert response.status_code == 429
+    assert _extract_chat_session_id(response.text) == start_result.chat_session.id
+    repository = client.app.state.chat_repository
+    messages = repository.list_messages_for_chat(
+        chat_session_id=start_result.chat_session.id,
+        client_id="client-a",
+    )
+    assert [message.content for message in messages] == ["First"]
+
+
+def test_send_message_returns_request_in_progress_when_duplicate_request_is_still_processing(
+    client, monkeypatch
+):
+    repository = client.app.state.chat_repository
+    chat_turn_service = client.app.state.chat_turn_service
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+
+    start_result = chat_turn_service.start_turn(
+        client_id="client-a",
+        request_id="duplicate-processing-request",
+        chat_session_id=chat.id,
+        message="Still running",
+    )
+
+    async def return_processing_state(*_args, **_kwargs):
+        return start_result.turn_request_state
+
+    def raise_if_duplicate_reprocessed(*_args, **_kwargs):
+        raise AssertionError("Duplicate request should not invoke the agent.")
+
+    monkeypatch.setattr(
+        client.app.state.agent,
+        "process_message",
+        raise_if_duplicate_reprocessed,
+    )
+    monkeypatch.setattr(main, "_await_turn_request_resolution", return_processing_state)
+
+    response = _send_message(
+        client,
+        {
+            "message": "Still running",
+            "chat_session_id": str(chat.id),
+            "request_id": "duplicate-processing-request",
+        },
+    )
+
+    assert response.status_code == 409
+    assert "Request In Progress" in response.text
+    assert response.headers["HX-Push-Url"].endswith(f"/chats/{chat.id}")
+    messages = repository.list_messages_for_chat(chat_session_id=chat.id, client_id="client-a")
+    assert [message.content for message in messages] == ["Still running"]
+
+
 def test_send_message_returns_409_when_chat_is_deleted_during_in_flight_send(client, monkeypatch):
     repository = client.app.state.chat_repository
     client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
@@ -707,6 +801,125 @@ def test_send_message_returns_409_when_chat_is_deleted_during_in_flight_send(cli
     assert turn_request_state is not None
     assert turn_request_state.turn_request.status == "conflicted"
     assert turn_request_state.user_message.content == "Delete me mid-flight"
+    assert turn_request_state.assistant_message is None
+
+
+def test_send_message_replays_duplicate_conflicted_request_without_reprocessing(client, monkeypatch):
+    repository = client.app.state.chat_repository
+    chat_turn_service = client.app.state.chat_turn_service
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    fallback_chat = repository.create_chat(client_id="client-a", title="Chat 1")
+    target_chat = repository.create_chat(client_id="client-a", title="Chat 2")
+
+    start_result = chat_turn_service.start_turn(
+        client_id="client-a",
+        request_id="duplicate-conflicted-request",
+        chat_session_id=target_chat.id,
+        message="Archive me mid-flight",
+    )
+    repository.archive_chat(chat_session_id=target_chat.id, client_id="client-a")
+    conflicted_state = chat_turn_service.complete_turn(
+        client_id="client-a",
+        request_id="duplicate-conflicted-request",
+        assistant_content="This should not persist",
+    )
+
+    def raise_if_conflict_reprocessed(*_args, **_kwargs):
+        raise AssertionError("Duplicate replay should not invoke the agent.")
+
+    monkeypatch.setattr(
+        client.app.state.agent,
+        "process_message",
+        raise_if_conflict_reprocessed,
+    )
+
+    response = _send_message(
+        client,
+        {
+            "message": "Archive me mid-flight",
+            "chat_session_id": str(target_chat.id),
+            "request_id": "duplicate-conflicted-request",
+        },
+    )
+
+    assert start_result.outcome == "started"
+    assert conflicted_state.turn_request.status == "conflicted"
+    assert response.status_code == 409
+    assert "Chat No Longer Available" in response.text
+    assert response.headers["HX-Push-Url"].endswith(f"/chats/{fallback_chat.id}")
+    assert _extract_chat_session_id(response.text) == fallback_chat.id
+
+
+def test_send_message_returns_409_when_chat_is_archived_during_in_flight_send(client, monkeypatch):
+    repository = client.app.state.chat_repository
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+    captured_request_id = "archive-during-send"
+
+    def archive_then_reply(_msg, _history=None):
+        repository.archive_chat(chat_session_id=chat.id, client_id="client-a")
+        return "Reply that should not persist"
+
+    monkeypatch.setattr(client.app.state.agent, "process_message", archive_then_reply)
+
+    response = _send_message(
+        client,
+        {
+            "message": "Archive me mid-flight",
+            "chat_session_id": str(chat.id),
+            "request_id": captured_request_id,
+        },
+    )
+    turn_request_state = repository.get_turn_request_state(
+        client_id="client-a",
+        request_id=captured_request_id,
+    )
+
+    assert response.status_code == 409
+    assert "Chat No Longer Available" in response.text
+    assert response.headers["HX-Push-Url"] == "/chat-start"
+    assert turn_request_state is not None
+    assert turn_request_state.turn_request.status == "conflicted"
+    assert turn_request_state.turn_request.failure_code == "chat_unavailable"
+    assert turn_request_state.user_message.content == "Archive me mid-flight"
+    assert turn_request_state.assistant_message is None
+
+
+def test_send_message_returns_409_when_chat_is_archived_during_in_flight_failure(
+    client, monkeypatch
+):
+    repository = client.app.state.chat_repository
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+    captured_request_id = "archive-during-failure"
+    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    error_response = httpx.Response(429, request=request)
+
+    def archive_then_raise(_msg, _history=None):
+        repository.archive_chat(chat_session_id=chat.id, client_id="client-a")
+        raise openai.RateLimitError("rate limit", response=error_response, body={})
+
+    monkeypatch.setattr(client.app.state.agent, "process_message", archive_then_raise)
+
+    response = _send_message(
+        client,
+        {
+            "message": "Archive me before failure finalization",
+            "chat_session_id": str(chat.id),
+            "request_id": captured_request_id,
+        },
+    )
+    turn_request_state = repository.get_turn_request_state(
+        client_id="client-a",
+        request_id=captured_request_id,
+    )
+
+    assert response.status_code == 409
+    assert "Chat No Longer Available" in response.text
+    assert response.headers["HX-Push-Url"] == "/chat-start"
+    assert turn_request_state is not None
+    assert turn_request_state.turn_request.status == "conflicted"
+    assert turn_request_state.turn_request.failure_code == "chat_unavailable"
     assert turn_request_state.assistant_message is None
 
 

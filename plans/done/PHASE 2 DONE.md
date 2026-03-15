@@ -4,6 +4,28 @@ Completed Phase 2 backlog items move here once they are shipped.
 
 ## Completed Items
 
+### P2-08 Test And Documentation Expansion
+
+Priority: P1
+
+Delivered:
+
+- closed the remaining Phase 2 regression gaps around duplicate replay, `processing` duplicate handling, and archived-chat lifecycle conflicts
+- added browser-level refresh and direct-URL revisit coverage against the live app so persisted chats are restored end-to-end
+- expanded the Playwright harness with a test-only live-server fixture that exposes the temporary SQLite path for deterministic persisted-chat seeding
+- updated contributor-facing docs to reflect the shipped Phase 2 multi-chat baseline and documented the visual snapshot workflow explicitly
+- reconciled the Phase 2 planning records so completed work is tracked in the done log instead of remaining in the active backlog
+
+Acceptance criteria met:
+
+- Phase 2 behavior is documented end-to-end without obvious planning drift between design, backlog, done, and README
+- regression tests cover the main shipped lifecycle paths plus the remaining P2-07 hardening paths
+- browser-level refresh/resume behavior is covered by e2e tests
+- local setup remains straightforward for contributors
+
+What the user sees:
+No visible product change, but the shipped Phase 2 behavior is now covered and documented much more completely for contributors and future refactors.
+
 ### P2-07 Concurrency, Integrity, And Failure-Mode Hardening
 
 Priority: P1

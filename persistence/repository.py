@@ -67,16 +67,7 @@ class ChatRepository:
 
     def next_default_chat_title(self, *, client_id: str) -> str:
         with closing(connect_database(self._db_path)) as connection:
-            row = connection.execute(
-                """
-                SELECT COUNT(*) AS chat_count
-                FROM chat_sessions
-                WHERE client_id = ?
-                """,
-                (client_id,),
-            ).fetchone()
-            chat_count = int(row["chat_count"]) if row is not None else 0
-            return f"Chat {chat_count + 1}"
+            return self._next_default_chat_title(connection, client_id=client_id)
 
     def create_chat(self, *, client_id: str, title: str) -> ChatSession:
         timestamp = _utcnow()
@@ -252,7 +243,7 @@ class ChatRepository:
                     chat_row = _insert_chat_row(
                         connection,
                         client_id=client_id,
-                        title=f"Chat {_count_chats_for_client(connection, client_id=client_id) + 1}",
+                        title=self._next_default_chat_title(connection, client_id=client_id),
                         timestamp=timestamp,
                     )
                     prior_messages: list[ChatMessage] = []
@@ -317,6 +308,14 @@ class ChatRepository:
             except Exception:
                 connection.rollback()
                 raise
+
+    def _next_default_chat_title(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        client_id: str,
+    ) -> str:
+        return f"Chat {_count_chats_for_client(connection, client_id=client_id) + 1}"
 
     def get_turn_request_state(
         self,
