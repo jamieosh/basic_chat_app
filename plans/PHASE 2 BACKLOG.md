@@ -6,27 +6,6 @@ See [`plans/PARKING LOT.md`](/Users/jamie/Development/basic_chat_app/plans/PARKI
 
 ## Backlog Items
 
-### P2-07 Concurrency, Integrity, And Failure-Mode Hardening
-
-Priority: P1
-
-Deliver:
-
-- move the per-chat turn write path behind repository-level transactional helpers where appropriate
-- add server-side duplicate-submit protection or idempotency per chat instead of relying only on browser-side request locking
-- define and enforce behavior when a chat becomes archived, deleted, missing, or stale while a request is in flight
-- include chat IDs and client IDs in logs where useful for concurrency and lifecycle debugging
-
-Acceptance criteria:
-
-- duplicate submits against the same chat do not create duplicated user or assistant turns, even if the browser submits twice
-- partial failures in the send path leave storage in a deterministic state with an explicit policy for what is persisted
-- missing, deleted, archived, and stale-target edge cases are covered by tests
-- the route layer no longer coordinates the full multi-step write lifecycle through loosely coupled repository calls
-
-What the user will see:
-No major new UI, but chat behavior will feel more reliable because duplicate messages, broken states, and inconsistent chat actions should happen less often.
-
 ### P2-08 Test And Documentation Expansion
 
 Priority: P1

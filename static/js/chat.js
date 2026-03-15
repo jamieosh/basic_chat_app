@@ -4,6 +4,7 @@ class ChatUI {
         this.chatBoxId = options.chatBoxId || 'chat-box';
         this.formId = options.formId || 'chat-form';
         this.messageInputId = options.messageInputId || 'message-input';
+        this.requestIdInputId = options.requestIdInputId || 'chat-request-id';
         this.submitButtonId = options.submitButtonId || 'send-button';
         this.requestStatusId = options.requestStatusId || 'chat-request-status';
         this.navigationStatusId = options.navigationStatusId || 'chat-navigation-status';
@@ -18,6 +19,7 @@ class ChatUI {
         this.form = document.getElementById(this.formId);
         this.chatBox = document.getElementById(this.chatBoxId);
         this.messageInput = document.getElementById(this.messageInputId);
+        this.requestIdInput = document.getElementById(this.requestIdInputId);
         this.submitButton = document.getElementById(this.submitButtonId);
         this.requestStatus = document.getElementById(this.requestStatusId);
         this.navigationStatus = document.getElementById(this.navigationStatusId);
@@ -27,6 +29,7 @@ class ChatUI {
 
         // Initialize textarea auto-resize
         this.initTextarea();
+        this.ensureRequestId();
 
         this.syncDrawerState(false);
 
@@ -94,6 +97,26 @@ class ChatUI {
             this.adjustTextareaHeight(textarea);
             this.syncSubmitButtonHeight(textarea);
         }
+    }
+
+    generateRequestId() {
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+            return window.crypto.randomUUID();
+        }
+
+        return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
+    ensureRequestId() {
+        if (!this.requestIdInput) return;
+        if (!this.requestIdInput.value) {
+            this.requestIdInput.value = this.generateRequestId();
+        }
+    }
+
+    rotateRequestId() {
+        if (!this.requestIdInput) return;
+        this.requestIdInput.value = this.generateRequestId();
     }
 
     syncSubmitButtonHeight(textarea) {
@@ -303,6 +326,7 @@ class ChatUI {
 
     handleBeforeRequest(event) {
         if (event.target !== this.form) return;
+        this.ensureRequestId();
 
         const message = this.messageInput?.value.trim() || '';
         if (!message) {
@@ -552,6 +576,7 @@ class ChatUI {
         this.requestInFlight = false;
         this.transportErrorHandled = false;
         this.resetTextarea();
+        this.rotateRequestId();
         this.setControlsDisabled(false);
 
         if (!preserveStatus) {

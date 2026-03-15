@@ -2,6 +2,14 @@
 
 ## 2026-03-15
 
+### Ship Phase 2 Concurrency, Integrity, And Failure-Mode Hardening
+
+- Reworked the `/send-message-htmx` lifecycle around transactional repository helpers and a dedicated chat-turn service so the route no longer coordinates raw multi-step write sequencing.
+- Added persisted request-ID idempotency per browser/client so duplicate submits replay the stored outcome instead of creating duplicate user or assistant turns.
+- Defined and documented the send reliability contract: invalid targets now fail as `404` at request start, while chats deleted or archived during in-flight finalization return `409` and keep only the accepted user turn.
+- Expanded route, repository/service, and Playwright coverage for duplicate replay, lifecycle conflicts, request-ID rotation, and deterministic partial-failure behavior.
+- Removed the unused `hello.py` scaffold file.
+
 ### Ship Phase 2 Chat Titles And Delete Lifecycle
 
 - Added deterministic per-client default chat titles and kept title generation isolated behind the repository layer for later evolution.

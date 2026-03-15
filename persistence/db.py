@@ -32,6 +32,26 @@ ON chat_sessions (client_id, archived_at, deleted_at, updated_at DESC, id DESC);
 
 CREATE INDEX IF NOT EXISTS idx_chat_messages_by_chat_position
 ON chat_messages (chat_session_id, position ASC, id ASC);
+
+CREATE TABLE IF NOT EXISTS chat_turn_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id TEXT NOT NULL,
+    request_id TEXT NOT NULL,
+    chat_session_id INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('processing', 'completed', 'failed', 'conflicted')),
+    user_message_id INTEGER NOT NULL,
+    assistant_message_id INTEGER,
+    failure_code TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (chat_session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_message_id) REFERENCES chat_messages(id) ON DELETE CASCADE,
+    FOREIGN KEY (assistant_message_id) REFERENCES chat_messages(id) ON DELETE CASCADE,
+    UNIQUE (client_id, request_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_turn_requests_by_client_status
+ON chat_turn_requests (client_id, status, updated_at DESC, id DESC);
 """
 
 

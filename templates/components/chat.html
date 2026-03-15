@@ -44,6 +44,12 @@
                     name="chat_session_id"
                     value="{{ active_chat_session_id if active_chat_session_id is not none else '' }}"
                 >
+                <input
+                    type="hidden"
+                    id="chat-request-id"
+                    name="request_id"
+                    value="{{ chat_request_id }}"
+                >
                 <textarea
                        id="message-input"
                        name="message"

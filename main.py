@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from textwrap import dedent
 from typing import Literal, cast
+from uuid import uuid4
 
 import openai
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -20,9 +21,11 @@ from persistence import (
     ChatMessage,
     ChatRepository,
     ChatSession,
+    ChatTurnRequestState,
     StorageInitializationError,
     bootstrap_database,
 )
+from services import ChatTurnService, failure_presentation
 from utils.diagnostics import (
     DiagnosticCheck,
     StartupDiagnosticsError,
@@ -73,6 +76,14 @@ def _get_agent(request: Request) -> OpenAIAgent:
     except AttributeError as exc:
         logger.error("OpenAI agent is not initialized")
         raise HTTPException(status_code=503, detail="AI agent unavailable") from exc
+
+
+def _get_chat_turn_service(request: Request) -> ChatTurnService:
+    try:
+        return request.app.state.chat_turn_service
+    except AttributeError as exc:
+        logger.error("Chat turn service is not initialized")
+        raise HTTPException(status_code=503, detail="Chat turn service unavailable") from exc
 
 
 def _render_bot_message(
@@ -160,6 +171,10 @@ def _chat_start_url_path() -> str:
     return "/chat-start"
 
 
+def _new_request_id() -> str:
+    return str(uuid4())
+
+
 def _validate_message_input(message: str | None) -> str:
     if message is None or not message.strip():
         raise ValueError("Message cannot be empty")
@@ -181,6 +196,12 @@ def _validate_chat_session_input(chat_session_id: str | None) -> int | None:
     return parsed_chat_session_id
 
 
+def _validate_request_id_input(request_id: str | None) -> str:
+    if request_id is None or not request_id.strip():
+        raise ValueError("Request ID is required")
+    return request_id.strip()
+
+
 def _set_startup_state(app: FastAPI, *, startup_complete: bool) -> None:
     app.state.startup_complete = startup_complete
 
@@ -190,6 +211,7 @@ def _is_chat_service_available(app: FastAPI) -> bool:
         bool(getattr(app.state, "startup_complete", False))
         and hasattr(app.state, "agent")
         and hasattr(app.state, "chat_repository")
+        and hasattr(app.state, "chat_turn_service")
     )
 
 
@@ -265,6 +287,17 @@ def _format_chat_list_timestamp(timestamp: str) -> str:
     return parsed_timestamp.strftime("%b %d")
 
 
+def _is_chat_session_active(chat_session: ChatSession | None) -> bool:
+    return chat_session is not None and chat_session.archived_at is None and chat_session.deleted_at is None
+
+
+def _first_visible_chat_session_id(repository: ChatRepository, *, client_id: str) -> int | None:
+    visible_chats = repository.list_visible_chats(client_id=client_id)
+    if not visible_chats:
+        return None
+    return visible_chats[0].id
+
+
 def _load_chat_page_state(
     repository: ChatRepository,
     *,
@@ -320,6 +353,7 @@ def _base_template_context(
         "format_text_as_html": _format_text_as_html,
         "format_response_as_html": format_response_as_html,
         "asset_version": _static_asset_version(),
+        "chat_request_id": _new_request_id(),
     }
 
 
@@ -470,6 +504,109 @@ def _render_chat_error_htmx_response(
     )
 
 
+def _render_turn_request_state_response(
+    request: Request,
+    *,
+    agent: OpenAIAgent,
+    repository: ChatRepository,
+    client_id: str,
+    turn_request_state: ChatTurnRequestState,
+    timestamp: str,
+) -> HTMLResponse:
+    active_chat_session_id = turn_request_state.turn_request.chat_session_id
+    if turn_request_state.turn_request.status == "completed" and _is_chat_session_active(
+        turn_request_state.chat_session
+    ):
+        assistant_message = turn_request_state.assistant_message
+        if assistant_message is None:  # pragma: no cover - defensive against required persistence
+            raise RuntimeError("Completed turn request is missing its assistant message.")
+
+        page_context = _chat_page_context(
+            request,
+            display_name=agent.display_name,
+            model_display_name=agent.model_display_name,
+            chat_available=True,
+            service_status_message=_chat_service_unavailable_detail(request.app),
+            page_state=_load_chat_page_state(
+                repository,
+                client_id=client_id,
+                chat_session_id=active_chat_session_id,
+            ),
+        )
+        return _response_with_optional_push_url(
+            _render_htmx_response(
+                "\n".join(
+                    [
+                        _render_bot_message(
+                            format_response_as_html(assistant_message.content),
+                            timestamp,
+                        ),
+                        _render_chat_view_updates(
+                            page_context,
+                            chat_session_id=active_chat_session_id,
+                        ),
+                    ]
+                ),
+            ),
+            chat_session_id=active_chat_session_id,
+        )
+
+    failure_code = turn_request_state.turn_request.failure_code or "unexpected_error"
+    presentation = failure_presentation(failure_code)
+    response_chat_session_id: int | None = active_chat_session_id
+    if turn_request_state.turn_request.status == "conflicted" or not _is_chat_session_active(
+        turn_request_state.chat_session
+    ):
+        response_chat_session_id = _first_visible_chat_session_id(repository, client_id=client_id)
+        if response_chat_session_id is None:
+            return _response_with_optional_push_url(
+                _render_error_response(
+                    presentation.title,
+                    presentation.body,
+                    timestamp,
+                    presentation.status_code,
+                ),
+                chat_session_id=None,
+            )
+
+    return _render_chat_error_htmx_response(
+        request,
+        agent=agent,
+        repository=repository,
+        client_id=client_id,
+        active_chat_session_id=response_chat_session_id,
+        title=presentation.title,
+        body=presentation.body,
+        timestamp=timestamp,
+        status_code=presentation.status_code,
+    )
+
+
+async def _await_turn_request_resolution(
+    chat_turn_service: ChatTurnService,
+    *,
+    client_id: str,
+    request_id: str,
+    timeout_seconds: float = 5.0,
+) -> ChatTurnRequestState | None:
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    state = await asyncio.to_thread(
+        chat_turn_service.get_turn_state,
+        client_id=client_id,
+        request_id=request_id,
+    )
+    while state is not None and state.turn_request.status == "processing":
+        if asyncio.get_running_loop().time() >= deadline:
+            return state
+        await asyncio.sleep(0.05)
+        state = await asyncio.to_thread(
+            chat_turn_service.get_turn_state,
+            client_id=client_id,
+            request_id=request_id,
+        )
+    return state
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize dependencies at startup instead of import time."""
@@ -483,6 +620,7 @@ async def lifespan(app: FastAPI):
         raise_for_failed_startup_checks(startup_checks)
         bootstrap_database(settings.chat_database_path)
         app.state.chat_repository = ChatRepository(settings.chat_database_path)
+        app.state.chat_turn_service = ChatTurnService(app.state.chat_repository)
         app.state.agent = OpenAIAgent(
             api_key=settings.openai_api_key or "",
             model=settings.openai_model,
@@ -535,6 +673,8 @@ async def lifespan(app: FastAPI):
         _set_startup_state(app, startup_complete=False)
         if hasattr(app.state, "agent"):
             del app.state.agent
+        if hasattr(app.state, "chat_turn_service"):
+            del app.state.chat_turn_service
         if hasattr(app.state, "chat_repository"):
             del app.state.chat_repository
         logger.info("startup.shutdown")
@@ -818,6 +958,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         request: Request,
         message: str | None = Form(None),
         chat_session_id: str | None = Form(None),
+        request_id: str | None = Form(None),
     ):
         """Process a chat message and return the response as HTML."""
         timestamp = datetime.now().strftime("%I:%M %p")
@@ -839,88 +980,132 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
         agent = _get_agent(request)
         repository = request.app.state.chat_repository
+        chat_turn_service = _get_chat_turn_service(request)
         active_chat_session_id: int | None = None
+        resolved_request_id: str | None = None
 
         try:
             message = _validate_message_input(message)
             requested_chat_session_id = _validate_chat_session_input(chat_session_id)
-            logger.info("chat.request_received chars=%s", len(message))
+            resolved_request_id = _validate_request_id_input(request_id)
+            logger.info(
+                "chat.request_received chars=%s chat_session_id=%s client_id=%s request_id=%s",
+                len(message),
+                requested_chat_session_id,
+                client_id,
+                resolved_request_id,
+            )
 
-            if requested_chat_session_id is None:
-                chat = repository.create_chat(
-                    client_id=client_id,
-                    title=repository.next_default_chat_title(client_id=client_id),
+            start_result = await asyncio.to_thread(
+                chat_turn_service.start_turn,
+                client_id=client_id,
+                request_id=resolved_request_id,
+                chat_session_id=requested_chat_session_id,
+                message=message,
+            )
+            if start_result.outcome == "missing":
+                logger.warning(
+                    "chat.request_target_missing chat_session_id=%s client_id=%s request_id=%s",
+                    requested_chat_session_id,
+                    client_id,
+                    resolved_request_id,
                 )
-                prior_messages: list[ChatMessage] = []
-            else:
-                chat = repository.get_chat(
-                    chat_session_id=requested_chat_session_id,
+                return _finalize_response_with_client_cookie(
+                    _render_chat_not_found_message(timestamp),
                     client_id=client_id,
+                    should_set_cookie=should_set_client_cookie,
                 )
-                if chat is None:
+
+            if start_result.turn_request_state is None:  # pragma: no cover - defensive
+                raise RuntimeError("Turn request start result is missing its state.")
+
+            active_chat_session_id = start_result.turn_request_state.turn_request.chat_session_id
+            if start_result.outcome == "duplicate":
+                logger.info(
+                    "chat.request_replayed chat_session_id=%s client_id=%s request_id=%s status=%s",
+                    active_chat_session_id,
+                    client_id,
+                    resolved_request_id,
+                    start_result.turn_request_state.turn_request.status,
+                )
+                turn_request_state: ChatTurnRequestState | None = start_result.turn_request_state
+                if (
+                    turn_request_state is not None
+                    and turn_request_state.turn_request.status == "processing"
+                ):
+                    turn_request_state = await _await_turn_request_resolution(
+                        chat_turn_service,
+                        client_id=client_id,
+                        request_id=resolved_request_id,
+                    )
+                if turn_request_state is None or turn_request_state.turn_request.status == "processing":
                     return _finalize_response_with_client_cookie(
-                        _render_chat_not_found_message(timestamp),
+                        _render_chat_error_htmx_response(
+                            request,
+                            agent=agent,
+                            repository=repository,
+                            client_id=client_id,
+                            active_chat_session_id=active_chat_session_id,
+                            title="Request In Progress",
+                            body="This message is already being processed. Please wait for the current response to finish.",
+                            timestamp=timestamp,
+                            status_code=409,
+                        ),
                         client_id=client_id,
                         should_set_cookie=should_set_client_cookie,
                     )
-
-                prior_messages = repository.list_messages_for_chat(
-                    chat_session_id=chat.id,
+                replay_response = _render_turn_request_state_response(
+                    request,
+                    agent=agent,
+                    repository=repository,
                     client_id=client_id,
+                    turn_request_state=turn_request_state,
+                    timestamp=timestamp,
+                )
+                return _finalize_response_with_client_cookie(
+                    replay_response,
+                    client_id=client_id,
+                    should_set_cookie=should_set_client_cookie,
                 )
 
-            active_chat_session_id = chat.id
-            repository.create_message(
-                chat_session_id=chat.id,
-                client_id=client_id,
-                role="user",
-                content=message,
+            if start_result.chat_session is None:  # pragma: no cover - defensive
+                raise RuntimeError("Started turn request is missing its chat session.")
+
+            logger.info(
+                "chat.request_claimed chat_session_id=%s client_id=%s request_id=%s",
+                start_result.chat_session.id,
+                client_id,
+                resolved_request_id,
             )
 
             response = await asyncio.to_thread(
                 agent.process_message,
                 message,
-                _conversation_history_from_messages(prior_messages),
+                _conversation_history_from_messages(start_result.prior_messages),
             )
-            repository.create_message(
-                chat_session_id=chat.id,
+            turn_request_state = await asyncio.to_thread(
+                chat_turn_service.complete_turn,
                 client_id=client_id,
-                role="assistant",
-                content=response,
+                request_id=resolved_request_id,
+                assistant_content=response,
             )
-            formatted_content = format_response_as_html(response)
-            page_context = _chat_page_context(
+            html_response = _render_turn_request_state_response(
                 request,
-                display_name=agent.display_name,
-                model_display_name=agent.model_display_name,
-                chat_available=True,
-                service_status_message=_chat_service_unavailable_detail(request.app),
-                page_state=_load_chat_page_state(
-                    repository,
-                    client_id=client_id,
-                    chat_session_id=active_chat_session_id,
-                ),
-            )
-            html_response = _response_with_optional_push_url(
-                _render_htmx_response(
-                    "\n".join(
-                        [
-                            _render_bot_message(formatted_content, timestamp),
-                            _render_chat_view_updates(
-                                page_context,
-                                chat_session_id=active_chat_session_id,
-                            ),
-                        ]
-                    ),
-                ),
-                chat_session_id=active_chat_session_id,
+                agent=agent,
+                repository=repository,
+                client_id=client_id,
+                turn_request_state=turn_request_state,
+                timestamp=timestamp,
             )
 
             logger.info(
-                "chat.request_succeeded request_chars=%s response_chars=%s chat_session_id=%s",
+                "chat.request_succeeded request_chars=%s response_chars=%s chat_session_id=%s client_id=%s request_id=%s status=%s",
                 len(message),
                 len(response),
                 active_chat_session_id,
+                client_id,
+                resolved_request_id,
+                turn_request_state.turn_request.status,
             )
             return _finalize_response_with_client_cookie(
                 html_response,
@@ -944,17 +1129,20 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
         except openai.RateLimitError as e:
             _log_known_chat_error("chat.rate_limited", e)
+            turn_request_state = await asyncio.to_thread(
+                chat_turn_service.fail_turn,
+                client_id=client_id,
+                request_id=resolved_request_id or "",
+                failure_code="rate_limited",
+            )
             return _finalize_response_with_client_cookie(
-                _render_chat_error_htmx_response(
+                _render_turn_request_state_response(
                     request,
                     agent=agent,
                     repository=repository,
                     client_id=client_id,
-                    active_chat_session_id=active_chat_session_id,
-                    title="Rate Limit Exceeded",
-                    body="The AI service is currently busy. Please try again in a few moments.",
                     timestamp=timestamp,
-                    status_code=429,
+                    turn_request_state=turn_request_state,
                 ),
                 client_id=client_id,
                 should_set_cookie=should_set_client_cookie,
@@ -962,17 +1150,20 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
         except openai.AuthenticationError as e:
             _log_known_chat_error("chat.authentication_failed", e)
+            turn_request_state = await asyncio.to_thread(
+                chat_turn_service.fail_turn,
+                client_id=client_id,
+                request_id=resolved_request_id or "",
+                failure_code="authentication_failed",
+            )
             return _finalize_response_with_client_cookie(
-                _render_chat_error_htmx_response(
+                _render_turn_request_state_response(
                     request,
                     agent=agent,
                     repository=repository,
                     client_id=client_id,
-                    active_chat_session_id=active_chat_session_id,
-                    title="Authentication Error",
-                    body="There's an issue with the AI service authentication. Please contact support.",
                     timestamp=timestamp,
-                    status_code=401,
+                    turn_request_state=turn_request_state,
                 ),
                 client_id=client_id,
                 should_set_cookie=should_set_client_cookie,
@@ -980,17 +1171,20 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
         except openai.APITimeoutError as e:
             _log_known_chat_error("chat.timeout", e)
+            turn_request_state = await asyncio.to_thread(
+                chat_turn_service.fail_turn,
+                client_id=client_id,
+                request_id=resolved_request_id or "",
+                failure_code="timeout",
+            )
             return _finalize_response_with_client_cookie(
-                _render_chat_error_htmx_response(
+                _render_turn_request_state_response(
                     request,
                     agent=agent,
                     repository=repository,
                     client_id=client_id,
-                    active_chat_session_id=active_chat_session_id,
-                    title="Request Timeout",
-                    body="The AI service took too long to respond. Please try again.",
                     timestamp=timestamp,
-                    status_code=504,
+                    turn_request_state=turn_request_state,
                 ),
                 client_id=client_id,
                 should_set_cookie=should_set_client_cookie,
@@ -998,17 +1192,20 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
         except openai.APIConnectionError as e:
             _log_known_chat_error("chat.connection_error", e)
+            turn_request_state = await asyncio.to_thread(
+                chat_turn_service.fail_turn,
+                client_id=client_id,
+                request_id=resolved_request_id or "",
+                failure_code="connection_error",
+            )
             return _finalize_response_with_client_cookie(
-                _render_chat_error_htmx_response(
+                _render_turn_request_state_response(
                     request,
                     agent=agent,
                     repository=repository,
                     client_id=client_id,
-                    active_chat_session_id=active_chat_session_id,
-                    title="Connection Error",
-                    body="Could not connect to the AI service. Please check your internet connection and try again.",
                     timestamp=timestamp,
-                    status_code=503,
+                    turn_request_state=turn_request_state,
                 ),
                 client_id=client_id,
                 should_set_cookie=should_set_client_cookie,
@@ -1016,17 +1213,20 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
         except openai.BadRequestError as e:
             _log_known_chat_error("chat.bad_request", e)
+            turn_request_state = await asyncio.to_thread(
+                chat_turn_service.fail_turn,
+                client_id=client_id,
+                request_id=resolved_request_id or "",
+                failure_code="bad_request",
+            )
             return _finalize_response_with_client_cookie(
-                _render_chat_error_htmx_response(
+                _render_turn_request_state_response(
                     request,
                     agent=agent,
                     repository=repository,
                     client_id=client_id,
-                    active_chat_session_id=active_chat_session_id,
-                    title="AI Service Error",
-                    body="The AI service rejected the request. Please try again later.",
                     timestamp=timestamp,
-                    status_code=502,
+                    turn_request_state=turn_request_state,
                 ),
                 client_id=client_id,
                 should_set_cookie=should_set_client_cookie,
@@ -1034,17 +1234,20 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
         except openai.APIError as e:
             _log_known_chat_error("chat.api_error", e)
+            turn_request_state = await asyncio.to_thread(
+                chat_turn_service.fail_turn,
+                client_id=client_id,
+                request_id=resolved_request_id or "",
+                failure_code="api_error",
+            )
             return _finalize_response_with_client_cookie(
-                _render_chat_error_htmx_response(
+                _render_turn_request_state_response(
                     request,
                     agent=agent,
                     repository=repository,
                     client_id=client_id,
-                    active_chat_session_id=active_chat_session_id,
-                    title="AI Service Error",
-                    body="The AI service encountered an error. Please try again later.",
                     timestamp=timestamp,
-                    status_code=500,
+                    turn_request_state=turn_request_state,
                 ),
                 client_id=client_id,
                 should_set_cookie=should_set_client_cookie,
@@ -1052,17 +1255,20 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
         except EmptyModelResponseError as e:
             _log_known_chat_error("chat.empty_model_response", e)
+            turn_request_state = await asyncio.to_thread(
+                chat_turn_service.fail_turn,
+                client_id=client_id,
+                request_id=resolved_request_id or "",
+                failure_code="empty_model_response",
+            )
             return _finalize_response_with_client_cookie(
-                _render_chat_error_htmx_response(
+                _render_turn_request_state_response(
                     request,
                     agent=agent,
                     repository=repository,
                     client_id=client_id,
-                    active_chat_session_id=active_chat_session_id,
-                    title="AI Service Error",
-                    body="The AI service returned an empty response. Please try again later.",
                     timestamp=timestamp,
-                    status_code=502,
+                    turn_request_state=turn_request_state,
                 ),
                 client_id=client_id,
                 should_set_cookie=should_set_client_cookie,
@@ -1070,6 +1276,26 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
         except Exception as e:
             logger.error("chat.unexpected_error detail=%s", str(e), exc_info=True)
+            if resolved_request_id is not None and active_chat_session_id is not None:
+                turn_request_state = await asyncio.to_thread(
+                    chat_turn_service.fail_turn,
+                    client_id=client_id,
+                    request_id=resolved_request_id,
+                    failure_code="unexpected_error",
+                )
+                error_response = _render_turn_request_state_response(
+                    request,
+                    agent=agent,
+                    repository=repository,
+                    client_id=client_id,
+                    turn_request_state=turn_request_state,
+                    timestamp=timestamp,
+                )
+                return _finalize_response_with_client_cookie(
+                    error_response,
+                    client_id=client_id,
+                    should_set_cookie=should_set_client_cookie,
+                )
             return _finalize_response_with_client_cookie(
                 _render_chat_error_htmx_response(
                     request,

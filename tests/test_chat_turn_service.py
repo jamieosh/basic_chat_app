@@ -1,0 +1,121 @@
+from persistence import ChatRepository, bootstrap_database
+from services import ChatTurnService
+
+
+def test_chat_turn_service_replays_duplicate_request_without_creating_extra_turns(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    service = ChatTurnService(repository)
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-1",
+        chat_session_id=None,
+        message="Hello",
+    )
+    completed_state = service.complete_turn(
+        client_id="client-a",
+        request_id="request-1",
+        assistant_content="Hi there",
+    )
+    duplicate_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-1",
+        chat_session_id=None,
+        message="Hello",
+    )
+
+    assert start_result.outcome == "started"
+    assert completed_state.turn_request.status == "completed"
+    assert duplicate_result.outcome == "duplicate"
+    assert duplicate_result.turn_request_state is not None
+    assert duplicate_result.turn_request_state.turn_request.status == "completed"
+    assert duplicate_result.turn_request_state.assistant_message is not None
+    assert duplicate_result.turn_request_state.assistant_message.content == "Hi there"
+
+
+def test_chat_turn_service_finalize_failure_keeps_user_turn_and_marks_request_failed(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    service = ChatTurnService(repository)
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-2",
+        chat_session_id=None,
+        message="Hello",
+    )
+    failed_state = service.fail_turn(
+        client_id="client-a",
+        request_id="request-2",
+        failure_code="rate_limited",
+    )
+
+    assert start_result.outcome == "started"
+    assert failed_state.turn_request.status == "failed"
+    assert failed_state.turn_request.failure_code == "rate_limited"
+    assert failed_state.assistant_message is None
+    assert failed_state.user_message.content == "Hello"
+
+
+def test_chat_turn_service_marks_request_conflicted_when_chat_is_deleted_mid_flight(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    service = ChatTurnService(repository)
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-3",
+        chat_session_id=chat.id,
+        message="Delete me",
+    )
+    repository.soft_delete_chat(chat_session_id=chat.id, client_id="client-a")
+    conflicted_state = service.complete_turn(
+        client_id="client-a",
+        request_id="request-3",
+        assistant_content="This should not persist",
+    )
+
+    assert start_result.outcome == "started"
+    assert conflicted_state.turn_request.status == "conflicted"
+    assert conflicted_state.turn_request.failure_code == "chat_unavailable"
+    assert conflicted_state.assistant_message is None
+    assert conflicted_state.user_message.content == "Delete me"
+
+
+def test_chat_turn_service_rejects_missing_or_hidden_target_chat_at_request_start(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    service = ChatTurnService(repository)
+    deleted_chat = repository.create_chat(client_id="client-a", title="Chat 1")
+    archived_chat = repository.create_chat(client_id="client-a", title="Chat 2")
+    repository.soft_delete_chat(chat_session_id=deleted_chat.id, client_id="client-a")
+    repository.archive_chat(chat_session_id=archived_chat.id, client_id="client-a")
+
+    deleted_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-4",
+        chat_session_id=deleted_chat.id,
+        message="Hello",
+    )
+    archived_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-5",
+        chat_session_id=archived_chat.id,
+        message="Hello",
+    )
+    missing_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-6",
+        chat_session_id=999999,
+        message="Hello",
+    )
+
+    assert deleted_result.outcome == "missing"
+    assert archived_result.outcome == "missing"
+    assert missing_result.outcome == "missing"

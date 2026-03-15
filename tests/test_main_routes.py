@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import itertools
 from pathlib import Path
 import re
 import types
@@ -23,6 +24,15 @@ def _extract_chat_session_id(response_text: str) -> int:
     if match is None:
         raise AssertionError("Expected response to include an out-of-band chat session ID input.")
     return int(match.group(1))
+
+
+_REQUEST_ID_COUNTER = itertools.count(1)
+
+
+def _send_message(client, data: dict[str, str] | None = None):
+    payload = dict(data or {})
+    payload.setdefault("request_id", f"request-{next(_REQUEST_ID_COUNTER)}")
+    return client.post("/send-message-htmx", data=payload)
 
 
 def test_health_check(client):
@@ -140,6 +150,14 @@ def test_home_renders_chat_header(client):
     assert "Ask the first question" in response.text
 
 
+def test_home_renders_hidden_request_id_input(client):
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert 'id="chat-request-id"' in response.text
+    assert 'name="request_id"' in response.text
+
+
 def test_home_redirects_to_most_recent_visible_chat(client):
     repository = client.app.state.chat_repository
     client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
@@ -229,7 +247,7 @@ def test_send_message_returns_bot_message_html(client, monkeypatch):
         client.app.state.agent, "process_message", lambda _msg, _history=None: "Hello from test"
     )
 
-    response = client.post("/send-message-htmx", data={"message": "Hi"})
+    response = _send_message(client, {"message": "Hi"})
 
     assert response.status_code == 200
     assert "bot-message" in response.text
@@ -242,7 +260,7 @@ def test_send_message_sets_anonymous_client_cookie_when_missing(client, monkeypa
         client.app.state.agent, "process_message", lambda _msg, _history=None: "Hello from test"
     )
 
-    response = client.post("/send-message-htmx", data={"message": "Hi"})
+    response = _send_message(client, {"message": "Hi"})
 
     assert response.status_code == 200
     assert response.cookies.get(CLIENT_ID_COOKIE_NAME)
@@ -254,7 +272,7 @@ def test_send_message_creates_chat_and_persists_first_turn(client, monkeypatch):
         client.app.state.agent, "process_message", lambda _msg, _history=None: "Hello from test"
     )
 
-    response = client.post("/send-message-htmx", data={"message": "Hi"})
+    response = _send_message(client, {"message": "Hi"})
 
     assert response.status_code == 200
     created_chat_session_id = _extract_chat_session_id(response.text)
@@ -277,6 +295,43 @@ def test_send_message_creates_chat_and_persists_first_turn(client, monkeypatch):
     ]
 
 
+def test_send_message_replays_duplicate_first_submit_without_duplicate_turns(client, monkeypatch):
+    call_count = {"count": 0}
+
+    def fake_process_message(_msg, _history=None):
+        call_count["count"] += 1
+        return "Hello from test"
+
+    monkeypatch.setattr(client.app.state.agent, "process_message", fake_process_message)
+
+    first_response = _send_message(
+        client,
+        {"message": "Hi", "request_id": "duplicate-first-request"},
+    )
+    second_response = _send_message(
+        client,
+        {"message": "Hi", "request_id": "duplicate-first-request"},
+    )
+
+    first_chat_session_id = _extract_chat_session_id(first_response.text)
+    second_chat_session_id = _extract_chat_session_id(second_response.text)
+    repository = client.app.state.chat_repository
+    client_id = client.cookies.get(CLIENT_ID_COOKIE_NAME)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert first_chat_session_id == second_chat_session_id
+    assert call_count["count"] == 1
+    assert len(repository.list_visible_chats(client_id=client_id)) == 1
+    assert [
+        message.content
+        for message in repository.list_messages_for_chat(
+            chat_session_id=first_chat_session_id,
+            client_id=client_id,
+        )
+    ] == ["Hi", "Hello from test"]
+
+
 def test_send_message_appends_to_existing_chat_instead_of_creating_another(client, monkeypatch):
     call_count = {"count": 0}
 
@@ -286,12 +341,12 @@ def test_send_message_appends_to_existing_chat_instead_of_creating_another(clien
 
     monkeypatch.setattr(client.app.state.agent, "process_message", fake_process_message)
 
-    first_response = client.post("/send-message-htmx", data={"message": "Hi"})
+    first_response = _send_message(client, {"message": "Hi"})
     chat_session_id = _extract_chat_session_id(first_response.text)
 
-    second_response = client.post(
-        "/send-message-htmx",
-        data={"message": "Follow-up", "chat_session_id": str(chat_session_id)},
+    second_response = _send_message(
+        client,
+        {"message": "Follow-up", "chat_session_id": str(chat_session_id)},
     )
 
     assert second_response.status_code == 200
@@ -309,6 +364,47 @@ def test_send_message_appends_to_existing_chat_instead_of_creating_another(clien
     assert [message.content for message in messages] == ["Hi", "Reply 1", "Follow-up", "Reply 2"]
 
 
+def test_send_message_replays_duplicate_existing_chat_submit_without_duplicate_turns(
+    client, monkeypatch
+):
+    repository = client.app.state.chat_repository
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+    call_count = {"count": 0}
+
+    def fake_process_message(_msg, _history=None):
+        call_count["count"] += 1
+        return "Reply 1"
+
+    monkeypatch.setattr(client.app.state.agent, "process_message", fake_process_message)
+
+    first_response = _send_message(
+        client,
+        {
+            "message": "Follow-up",
+            "chat_session_id": str(chat.id),
+            "request_id": "duplicate-existing-request",
+        },
+    )
+    second_response = _send_message(
+        client,
+        {
+            "message": "Follow-up",
+            "chat_session_id": str(chat.id),
+            "request_id": "duplicate-existing-request",
+        },
+    )
+
+    messages = repository.list_messages_for_chat(chat_session_id=chat.id, client_id="client-a")
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert _extract_chat_session_id(first_response.text) == chat.id
+    assert _extract_chat_session_id(second_response.text) == chat.id
+    assert call_count["count"] == 1
+    assert [message.content for message in messages] == ["Follow-up", "Reply 1"]
+
+
 def test_send_message_passes_prior_transcript_to_agent_in_order(client, monkeypatch):
     captured_histories = []
 
@@ -318,12 +414,12 @@ def test_send_message_passes_prior_transcript_to_agent_in_order(client, monkeypa
 
     monkeypatch.setattr(client.app.state.agent, "process_message", fake_process_message)
 
-    first_response = client.post("/send-message-htmx", data={"message": "First"})
+    first_response = _send_message(client, {"message": "First"})
     chat_session_id = _extract_chat_session_id(first_response.text)
 
-    second_response = client.post(
-        "/send-message-htmx",
-        data={"message": "Second", "chat_session_id": str(chat_session_id)},
+    second_response = _send_message(
+        client,
+        {"message": "Second", "chat_session_id": str(chat_session_id)},
     )
 
     assert second_response.status_code == 200
@@ -342,13 +438,13 @@ def test_send_message_returns_generic_not_found_for_missing_or_foreign_chat(clie
     repository = client.app.state.chat_repository
     foreign_chat = repository.create_chat(client_id="client-b", title="Other chat")
 
-    foreign_response = client.post(
-        "/send-message-htmx",
-        data={"message": "Hi", "chat_session_id": str(foreign_chat.id)},
+    foreign_response = _send_message(
+        client,
+        {"message": "Hi", "chat_session_id": str(foreign_chat.id)},
     )
-    missing_response = client.post(
-        "/send-message-htmx",
-        data={"message": "Hi", "chat_session_id": "999999"},
+    missing_response = _send_message(
+        client,
+        {"message": "Hi", "chat_session_id": "999999"},
     )
 
     assert foreign_response.status_code == 404
@@ -410,7 +506,8 @@ def test_chat_page_returns_generic_not_found_for_missing_or_foreign_chat(client)
 
     assert foreign_response.status_code == 404
     assert missing_response.status_code == 404
-    assert foreign_response.text == missing_response.text
+    assert "Chat not found" in foreign_response.text
+    assert "Chat not found" in missing_response.text
     assert "Chat not found" in foreign_response.text
 
 
@@ -559,11 +656,11 @@ def test_send_message_persists_user_turn_without_assistant_reply_when_follow_up_
 
     monkeypatch.setattr(client.app.state.agent, "process_message", fake_process_message)
 
-    first_response = client.post("/send-message-htmx", data={"message": "First"})
+    first_response = _send_message(client, {"message": "First"})
     chat_session_id = _extract_chat_session_id(first_response.text)
-    second_response = client.post(
-        "/send-message-htmx",
-        data={"message": "Second", "chat_session_id": str(chat_session_id)},
+    second_response = _send_message(
+        client,
+        {"message": "Second", "chat_session_id": str(chat_session_id)},
     )
 
     assert second_response.status_code == 429
@@ -579,6 +676,40 @@ def test_send_message_persists_user_turn_without_assistant_reply_when_follow_up_
     assert [message.role for message in messages] == ["user", "assistant", "user"]
 
 
+def test_send_message_returns_409_when_chat_is_deleted_during_in_flight_send(client, monkeypatch):
+    repository = client.app.state.chat_repository
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+    captured_request_id = "delete-during-send"
+
+    def delete_then_reply(_msg, _history=None):
+        repository.soft_delete_chat(chat_session_id=chat.id, client_id="client-a")
+        return "Reply that should not persist"
+
+    monkeypatch.setattr(client.app.state.agent, "process_message", delete_then_reply)
+
+    response = _send_message(
+        client,
+        {
+            "message": "Delete me mid-flight",
+            "chat_session_id": str(chat.id),
+            "request_id": captured_request_id,
+        },
+    )
+    turn_request_state = repository.get_turn_request_state(
+        client_id="client-a",
+        request_id=captured_request_id,
+    )
+
+    assert response.status_code == 409
+    assert "Chat No Longer Available" in response.text
+    assert response.headers["HX-Push-Url"] == "/chat-start"
+    assert turn_request_state is not None
+    assert turn_request_state.turn_request.status == "conflicted"
+    assert turn_request_state.user_message.content == "Delete me mid-flight"
+    assert turn_request_state.assistant_message is None
+
+
 def test_send_message_first_message_failure_still_returns_created_chat_session_id(
     client, monkeypatch
 ):
@@ -590,7 +721,7 @@ def test_send_message_first_message_failure_still_returns_created_chat_session_i
 
     monkeypatch.setattr(client.app.state.agent, "process_message", raise_rate_limit)
 
-    response = client.post("/send-message-htmx", data={"message": "First"})
+    response = _send_message(client, {"message": "First"})
 
     assert response.status_code == 429
     chat_session_id = _extract_chat_session_id(response.text)
@@ -611,7 +742,7 @@ def test_send_message_first_message_failure_still_returns_created_chat_session_i
 def test_send_message_returns_service_unavailable_html_when_agent_is_missing(client):
     del client.app.state.agent
 
-    response = client.post("/send-message-htmx", data={"message": "Hi"})
+    response = _send_message(client, {"message": "Hi"})
 
     assert response.status_code == 503
     assert "Service Unavailable" in response.text
@@ -622,7 +753,7 @@ def test_send_message_returns_service_unavailable_html_when_agent_is_missing(cli
 def test_send_message_returns_service_unavailable_html_when_storage_is_missing(client):
     del client.app.state.chat_repository
 
-    response = client.post("/send-message-htmx", data={"message": "Hi"})
+    response = _send_message(client, {"message": "Hi"})
 
     assert response.status_code == 503
     assert "Service Unavailable" in response.text
@@ -633,7 +764,7 @@ def test_send_message_returns_service_unavailable_html_when_storage_is_missing(c
 def test_send_message_returns_startup_message_when_startup_is_incomplete(client):
     client.app.state.startup_complete = False
 
-    response = client.post("/send-message-htmx", data={"message": "Hi"})
+    response = _send_message(client, {"message": "Hi"})
 
     assert response.status_code == 503
     assert "Service Unavailable" in response.text
@@ -642,7 +773,7 @@ def test_send_message_returns_startup_message_when_startup_is_incomplete(client)
 
 
 def test_send_message_offloads_blocking_agent_call_from_event_loop(client, monkeypatch):
-    captured = {}
+    captured = {"calls": []}
 
     def fake_process_message(raw_message, conversation_history=None):
         captured["processed_message"] = raw_message
@@ -650,27 +781,25 @@ def test_send_message_offloads_blocking_agent_call_from_event_loop(client, monke
         return "Hello from thread"
 
     async def fake_to_thread(func, *args, **kwargs):
-        captured["func"] = func
-        captured["args"] = args
-        captured["kwargs"] = kwargs
+        captured["calls"].append((func, args, kwargs))
         return func(*args, **kwargs)
 
     monkeypatch.setattr(client.app.state.agent, "process_message", fake_process_message)
     monkeypatch.setattr(main.asyncio, "to_thread", fake_to_thread)
 
-    response = client.post("/send-message-htmx", data={"message": "Hi"})
+    response = _send_message(client, {"message": "Hi"})
 
     assert response.status_code == 200
-    assert captured["func"] is fake_process_message
-    assert captured["args"] == ("Hi", [])
-    assert captured["kwargs"] == {}
+    assert captured["calls"][1][0] is fake_process_message
+    assert captured["calls"][1][1] == ("Hi", [])
+    assert captured["calls"][1][2] == {}
     assert captured["processed_message"] == "Hi"
     assert captured["conversation_history"] == []
     assert "Hello from thread" in response.text
 
 
 def test_send_message_rejects_blank_messages(client):
-    response = client.post("/send-message-htmx", data={"message": "   "})
+    response = _send_message(client, {"message": "   "})
 
     assert response.status_code == 400
     assert "Invalid Input" in response.text
@@ -678,7 +807,7 @@ def test_send_message_rejects_blank_messages(client):
 
 
 def test_send_message_requires_message_field(client):
-    response = client.post("/send-message-htmx", data={})
+    response = _send_message(client, {})
 
     assert response.status_code == 400
     assert "Invalid Input" in response.text
@@ -690,7 +819,7 @@ def test_send_message_validation_error_escapes_html(client, monkeypatch):
         raise ValueError("<b>bad input</b>")
 
     monkeypatch.setattr(client.app.state.agent, "process_message", raise_value_error)
-    response = client.post("/send-message-htmx", data={"message": "Hi"})
+    response = _send_message(client, {"message": "Hi"})
 
     assert response.status_code == 400
     assert "&lt;b&gt;bad input&lt;/b&gt;" in response.text
@@ -705,7 +834,7 @@ def test_send_message_handles_rate_limit_error(client, monkeypatch):
         raise openai.RateLimitError("rate limit", response=response, body={})
 
     monkeypatch.setattr(client.app.state.agent, "process_message", raise_rate_limit)
-    result = client.post("/send-message-htmx", data={"message": "Hi"})
+    result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 429
     assert "Rate Limit Exceeded" in result.text
@@ -720,7 +849,7 @@ def test_send_message_handles_authentication_error(client, monkeypatch):
         raise openai.AuthenticationError("auth failed", response=response, body={})
 
     monkeypatch.setattr(client.app.state.agent, "process_message", raise_auth_error)
-    result = client.post("/send-message-htmx", data={"message": "Hi"})
+    result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 401
     assert "Authentication Error" in result.text
@@ -733,7 +862,7 @@ def test_send_message_handles_api_connection_error(client, monkeypatch):
         raise openai.APIConnectionError(message="conn", request=request)
 
     monkeypatch.setattr(client.app.state.agent, "process_message", raise_connection_error)
-    result = client.post("/send-message-htmx", data={"message": "Hi"})
+    result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 503
     assert "Connection Error" in result.text
@@ -746,7 +875,7 @@ def test_send_message_handles_api_timeout_error(client, monkeypatch):
         raise openai.APITimeoutError(request=request)
 
     monkeypatch.setattr(client.app.state.agent, "process_message", raise_timeout_error)
-    result = client.post("/send-message-htmx", data={"message": "Hi"})
+    result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 504
     assert "Request Timeout" in result.text
@@ -760,7 +889,7 @@ def test_send_message_handles_bad_request_error(client, monkeypatch):
         raise openai.BadRequestError("bad request", response=response, body={})
 
     monkeypatch.setattr(client.app.state.agent, "process_message", raise_bad_request_error)
-    result = client.post("/send-message-htmx", data={"message": "Hi"})
+    result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 502
     assert "AI Service Error" in result.text
@@ -773,7 +902,7 @@ def test_send_message_handles_generic_openai_api_error(client, monkeypatch):
         raise openai.APIError("api failed", request=request, body={})
 
     monkeypatch.setattr(client.app.state.agent, "process_message", raise_api_error)
-    result = client.post("/send-message-htmx", data={"message": "Hi"})
+    result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 500
     assert "AI Service Error" in result.text
@@ -784,7 +913,7 @@ def test_send_message_handles_empty_model_response(client, monkeypatch):
         raise EmptyModelResponseError("AI response did not include any text content")
 
     monkeypatch.setattr(client.app.state.agent, "process_message", raise_empty_model_response)
-    result = client.post("/send-message-htmx", data={"message": "Hi"})
+    result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 502
     assert "AI Service Error" in result.text
@@ -798,7 +927,7 @@ def test_send_message_renders_mixed_text_and_code_without_paragraph_wrapping(cli
         lambda _msg, _history=None: "Example:\n```python\nprint('ok')\n```\nDone.",
     )
 
-    result = client.post("/send-message-htmx", data={"message": "Hi"})
+    result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 200
     assert "<pre" in result.text
@@ -813,7 +942,7 @@ def test_send_message_handles_runtime_error_without_except_typeerror(client, mon
         raise RuntimeError("boom")
 
     monkeypatch.setattr(client.app.state.agent, "process_message", raise_runtime_error)
-    result = client.post("/send-message-htmx", data={"message": "Hi"})
+    result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 500
     assert "Unexpected Error" in result.text

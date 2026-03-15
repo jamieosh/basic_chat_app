@@ -4,6 +4,28 @@ Completed Phase 2 backlog items move here once they are shipped.
 
 ## Completed Items
 
+### P2-07 Concurrency, Integrity, And Failure-Mode Hardening
+
+Priority: P1
+
+Delivered:
+
+- moved the send lifecycle behind repository-backed transactional helpers plus a small chat-turn service instead of coordinating the full write path directly in the route
+- added persisted per-request idempotency keyed by client and request ID so duplicate submits replay their stored outcome instead of creating duplicate turns
+- defined the lifecycle contract so invalid targets return `404` at request start, while chats deleted or archived during in-flight finalization return `409` and keep only the accepted user turn
+- expanded send-path logging with chat IDs, client IDs, and request IDs for duplicate replay, success, failure, and lifecycle-conflict debugging
+- removed the unused `hello.py` scaffold while updating docs and coverage to match the shipped Phase 2 reliability behavior
+
+Acceptance criteria met:
+
+- duplicate submits against the same chat no longer create duplicated user or assistant turns
+- partial failures in the send path leave storage in a deterministic state with an explicit persistence policy
+- missing, deleted, archived, and stale-target edge cases are covered by tests
+- the route layer no longer coordinates the full multi-step write lifecycle through loosely coupled repository calls
+
+What the user sees:
+Chat sends feel more reliable because duplicate requests are replayed safely, failure states are deterministic, and stale or deleted chats now resolve with consistent `404` and `409` behavior.
+
 ### P2-06 Chat Titles And Delete Lifecycle
 
 Priority: P1

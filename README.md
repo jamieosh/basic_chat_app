@@ -18,7 +18,7 @@ Those documents define the long-term direction and maturity phases. This README 
 - Multiple saved chats per browser/client with sidebar or drawer navigation.
 - Deterministic default chat titles plus confirmed delete behavior that returns users to the next visible chat or the start screen.
 - `New chat` start screen plus chat restoration through route-backed URLs.
-- In-flight request locking so duplicate submissions are ignored while a response is pending.
+- In-flight request locking plus persisted request IDs so duplicate submissions are replayed instead of being processed twice.
 - Lightweight loading feedback while switching chats.
 - Inline failure handling for validation, service-unavailable, and transport-error states.
 - OpenAI-backed agent implementation (`gpt-5-mini` by default).
@@ -63,6 +63,13 @@ Phase 1 does not include:
 - Keep the core simple and predictable.
 - Maintain a Python-first, minimal-JavaScript approach.
 - Preserve obvious extension seams for model, memory, and tool experimentation.
+
+## Send Reliability Policy
+
+- Each chat send includes a persisted request ID so exact duplicate POSTs for the same browser/client replay the stored outcome instead of creating duplicate turns.
+- If a target chat is already missing, foreign, deleted, or archived when `/send-message-htmx` starts, the route returns `404` and persists nothing for that request.
+- Once a send is accepted, the user turn is durable even if the assistant reply fails later.
+- If a chat is deleted or archived while a send is already in flight, delete/archive wins: the user turn remains, the assistant turn is not persisted, and the route returns `409`.
 
 ## Setup
 
