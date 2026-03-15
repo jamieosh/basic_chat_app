@@ -2,8 +2,9 @@ import openai
 from openai.types.chat import ChatCompletionMessageParam
 from pathlib import Path
 from typing import Any
+from collections.abc import Sequence
 
-from .base_agent import BaseAgent
+from .base_agent import BaseAgent, ConversationTurn
 from utils.logging_config import get_logger
 from utils.prompt_manager import PromptTemplateManager
 
@@ -92,7 +93,11 @@ class OpenAIAgent(BaseAgent):
         # Return the display name if it exists, otherwise return the model name
         return model_display_names.get(self.model, self.model)
     
-    def process_message(self, message):
+    def process_message(
+        self,
+        message: str,
+        conversation_history: Sequence[ConversationTurn] | None = None,
+    ) -> str:
         """
         Process a message using OpenAI's API
         
@@ -133,10 +138,10 @@ class OpenAIAgent(BaseAgent):
                 user_content = message
             
             # Format messages for OpenAI API
-            messages: list[ChatCompletionMessageParam] = [
-                {"role": "system", "content": system_content},
-                {"role": "user", "content": user_content}
-            ]
+            messages: list[ChatCompletionMessageParam] = [{"role": "system", "content": system_content}]
+            for turn in conversation_history or ():
+                messages.append({"role": turn.role, "content": turn.content})
+            messages.append({"role": "user", "content": user_content})
             
             # Log which prompt is being used
             self.logger.debug("openai_agent.prompt_selected prompt=%s", self.prompt_name)

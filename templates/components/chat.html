@@ -31,6 +31,7 @@
               data-chat-available="{{ 'true' if chat_available else 'false' }}"
               data-service-unavailable-message="{{ service_status_message }}"
               class="flex items-end gap-2 p-2 sm:p-4">
+            <input type="hidden" id="chat-session-id" name="chat_session_id" value="">
             <textarea
                    id="message-input"
                    name="message"

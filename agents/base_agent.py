@@ -1,4 +1,12 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Literal, Sequence
+
+
+@dataclass(frozen=True)
+class ConversationTurn:
+    role: Literal["user", "assistant"]
+    content: str
 
 class BaseAgent(ABC):
     """Abstract base class for all agents"""
@@ -16,6 +24,10 @@ class BaseAgent(ABC):
         pass
     
     @abstractmethod
-    def process_message(self, message: str) -> str:
+    def process_message(
+        self,
+        message: str,
+        conversation_history: Sequence[ConversationTurn] | None = None,
+    ) -> str:
         """Process a user message and return a response"""
         pass

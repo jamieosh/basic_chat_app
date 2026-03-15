@@ -8,12 +8,13 @@ from textwrap import dedent
 import openai
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from agents.base_agent import ConversationTurn
 from agents.openai_agent import EmptyModelResponseError, OpenAIAgent
-from persistence import ChatRepository, StorageInitializationError, bootstrap_database
+from persistence import ChatMessage, ChatRepository, StorageInitializationError, bootstrap_database
 from utils.diagnostics import (
     DiagnosticCheck,
     StartupDiagnosticsError,
@@ -21,6 +22,7 @@ from utils.diagnostics import (
     collect_startup_checks,
     raise_for_failed_startup_checks,
 )
+from utils.client_identity import resolve_client_id, set_client_id_cookie
 from utils.html_formatter import format_response_as_html
 from utils.logging_config import get_logger, init_logging
 from utils.settings import RuntimeSettings, get_settings, load_project_env
@@ -62,9 +64,48 @@ def _render_bot_message(body_html: str, timestamp: str, title: str | None = None
 
 
 def _render_error_message(title: str, body: str, timestamp: str, status_code: int) -> HTMLResponse:
+    return _render_error_response(title, body, timestamp, status_code)
+
+
+def _render_chat_session_id_input(chat_session_id: int) -> str:
+    return (
+        f'<input type="hidden" id="chat-session-id" name="chat_session_id" '
+        f'value="{chat_session_id}" hx-swap-oob="true">'
+    )
+
+
+def _render_htmx_response(content: str, status_code: int = 200, *, chat_session_id: int | None = None) -> HTMLResponse:
+    response_content = content
+    if chat_session_id is not None:
+        response_content = f"{response_content}\n{_render_chat_session_id_input(chat_session_id)}"
+
     return HTMLResponse(
-        content=_render_bot_message(html.escape(body), timestamp, title, is_error=True),
+        content=response_content,
         status_code=status_code,
+    )
+
+
+def _render_error_response(
+    title: str,
+    body: str,
+    timestamp: str,
+    status_code: int,
+    *,
+    chat_session_id: int | None = None,
+) -> HTMLResponse:
+    return _render_htmx_response(
+        _render_bot_message(html.escape(body), timestamp, title, is_error=True),
+        status_code=status_code,
+        chat_session_id=chat_session_id,
+    )
+
+
+def _render_chat_not_found_message(timestamp: str) -> HTMLResponse:
+    return _render_error_response(
+        "Chat Not Found",
+        "The requested chat could not be found.",
+        timestamp,
+        404,
     )
 
 
@@ -72,6 +113,21 @@ def _validate_message_input(message: str | None) -> str:
     if message is None or not message.strip():
         raise ValueError("Message cannot be empty")
     return message
+
+
+def _validate_chat_session_input(chat_session_id: str | None) -> int | None:
+    if chat_session_id is None or not chat_session_id.strip():
+        return None
+
+    try:
+        parsed_chat_session_id = int(chat_session_id)
+    except ValueError as exc:
+        raise ValueError("Chat session ID is invalid") from exc
+
+    if parsed_chat_session_id <= 0:
+        raise ValueError("Chat session ID is invalid")
+
+    return parsed_chat_session_id
 
 
 def _set_startup_state(app: FastAPI, *, startup_complete: bool) -> None:
@@ -102,6 +158,21 @@ def _readiness_status(app: FastAPI) -> tuple[int, dict[str, object]]:
 
 def _log_known_chat_error(event: str, exc: Exception) -> None:
     logger.warning("%s detail=%s", event, str(exc))
+
+
+def _finalize_response_with_client_cookie(response: Response, *, client_id: str, should_set_cookie: bool) -> Response:
+    if should_set_cookie:
+        set_client_id_cookie(response, client_id)
+    return response
+
+
+def _conversation_history_from_messages(messages: list[ChatMessage]) -> list[ConversationTurn]:
+    history: list[ConversationTurn] = []
+    for message in messages:
+        if message.role not in {"user", "assistant"}:
+            raise ValueError(f"Unsupported persisted role for conversation history: {message.role}")
+        history.append(ConversationTurn(role=message.role, content=message.content))
+    return history
 
 
 @asynccontextmanager
@@ -191,6 +262,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     async def home(request: Request):
         """Render the home page."""
         logger.debug("home.render")
+        client_id, should_set_client_cookie = resolve_client_id(request)
         chat_available = _is_chat_service_available(request.app)
         service_status_message = _chat_service_unavailable_detail(request.app)
         display_name = "AI Chat"
@@ -203,7 +275,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         else:
             logger.warning("home.service_unavailable detail=%s", service_status_message)
 
-        return templates.TemplateResponse(
+        response = templates.TemplateResponse(
             request,
             "index.html",
             {
@@ -216,113 +288,229 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             },
             status_code=200 if chat_available else 503,
         )
+        return _finalize_response_with_client_cookie(
+            response,
+            client_id=client_id,
+            should_set_cookie=should_set_client_cookie,
+        )
 
     @app.post("/send-message-htmx", response_class=HTMLResponse)
-    async def chat_htmx(request: Request, message: str | None = Form(None)):
+    async def chat_htmx(
+        request: Request,
+        message: str | None = Form(None),
+        chat_session_id: str | None = Form(None),
+    ):
         """Process a chat message and return the response as HTML."""
         timestamp = datetime.now().strftime("%I:%M %p")
+        client_id, should_set_client_cookie = resolve_client_id(request)
 
         if not _is_chat_service_available(request.app):
             service_status_message = _chat_service_unavailable_detail(request.app)
             logger.warning("chat.service_unavailable detail=%s", service_status_message)
-            return _render_error_message(
-                "Service Unavailable",
-                service_status_message,
-                timestamp,
-                503,
+            return _finalize_response_with_client_cookie(
+                _render_error_response(
+                    "Service Unavailable",
+                    service_status_message,
+                    timestamp,
+                    503,
+                ),
+                client_id=client_id,
+                should_set_cookie=should_set_client_cookie,
             )
 
         agent = _get_agent(request)
+        repository = request.app.state.chat_repository
+        active_chat_session_id: int | None = None
 
         try:
             message = _validate_message_input(message)
+            requested_chat_session_id = _validate_chat_session_input(chat_session_id)
             logger.info("chat.request_received chars=%s", len(message))
 
-            response = await asyncio.to_thread(agent.process_message, message)
+            if requested_chat_session_id is None:
+                chat = repository.create_chat(
+                    client_id=client_id,
+                    title=repository.next_default_chat_title(client_id=client_id),
+                )
+                prior_messages: list[ChatMessage] = []
+            else:
+                chat = repository.get_chat(
+                    chat_session_id=requested_chat_session_id,
+                    client_id=client_id,
+                )
+                if chat is None:
+                    return _finalize_response_with_client_cookie(
+                        _render_chat_not_found_message(timestamp),
+                        client_id=client_id,
+                        should_set_cookie=should_set_client_cookie,
+                    )
+
+                prior_messages = repository.list_messages_for_chat(
+                    chat_session_id=chat.id,
+                    client_id=client_id,
+                )
+
+            active_chat_session_id = chat.id
+            repository.create_message(
+                chat_session_id=chat.id,
+                client_id=client_id,
+                role="user",
+                content=message,
+            )
+
+            response = await asyncio.to_thread(
+                agent.process_message,
+                message,
+                _conversation_history_from_messages(prior_messages),
+            )
+            repository.create_message(
+                chat_session_id=chat.id,
+                client_id=client_id,
+                role="assistant",
+                content=response,
+            )
             formatted_content = format_response_as_html(response)
-            html_response = _render_bot_message(formatted_content, timestamp)
+            html_response = _render_htmx_response(
+                _render_bot_message(formatted_content, timestamp),
+                chat_session_id=active_chat_session_id,
+            )
 
             logger.info(
-                "chat.request_succeeded request_chars=%s response_chars=%s",
+                "chat.request_succeeded request_chars=%s response_chars=%s chat_session_id=%s",
                 len(message),
                 len(response),
+                active_chat_session_id,
             )
-            return HTMLResponse(content=html_response)
+            return _finalize_response_with_client_cookie(
+                html_response,
+                client_id=client_id,
+                should_set_cookie=should_set_client_cookie,
+            )
 
         except ValueError as e:
             _log_known_chat_error("chat.validation_failed", e)
-            return _render_error_message("Invalid Input", str(e), timestamp, 400)
+            return _finalize_response_with_client_cookie(
+                _render_error_response(
+                    "Invalid Input",
+                    str(e),
+                    timestamp,
+                    400,
+                    chat_session_id=active_chat_session_id,
+                ),
+                client_id=client_id,
+                should_set_cookie=should_set_client_cookie,
+            )
 
         except openai.RateLimitError as e:
             _log_known_chat_error("chat.rate_limited", e)
-            return _render_error_message(
-                "Rate Limit Exceeded",
-                "The AI service is currently busy. Please try again in a few moments.",
-                timestamp,
-                429,
+            return _finalize_response_with_client_cookie(
+                _render_error_response(
+                    "Rate Limit Exceeded",
+                    "The AI service is currently busy. Please try again in a few moments.",
+                    timestamp,
+                    429,
+                    chat_session_id=active_chat_session_id,
+                ),
+                client_id=client_id,
+                should_set_cookie=should_set_client_cookie,
             )
 
         except openai.AuthenticationError as e:
             _log_known_chat_error("chat.authentication_failed", e)
-            return _render_error_message(
-                "Authentication Error",
-                "There's an issue with the AI service authentication. Please contact support.",
-                timestamp,
-                401,
+            return _finalize_response_with_client_cookie(
+                _render_error_response(
+                    "Authentication Error",
+                    "There's an issue with the AI service authentication. Please contact support.",
+                    timestamp,
+                    401,
+                    chat_session_id=active_chat_session_id,
+                ),
+                client_id=client_id,
+                should_set_cookie=should_set_client_cookie,
             )
 
         except openai.APITimeoutError as e:
             _log_known_chat_error("chat.timeout", e)
-            return _render_error_message(
-                "Request Timeout",
-                "The AI service took too long to respond. Please try again.",
-                timestamp,
-                504,
+            return _finalize_response_with_client_cookie(
+                _render_error_response(
+                    "Request Timeout",
+                    "The AI service took too long to respond. Please try again.",
+                    timestamp,
+                    504,
+                    chat_session_id=active_chat_session_id,
+                ),
+                client_id=client_id,
+                should_set_cookie=should_set_client_cookie,
             )
 
         except openai.APIConnectionError as e:
             _log_known_chat_error("chat.connection_error", e)
-            return _render_error_message(
-                "Connection Error",
-                "Could not connect to the AI service. Please check your internet connection and try again.",
-                timestamp,
-                503,
+            return _finalize_response_with_client_cookie(
+                _render_error_response(
+                    "Connection Error",
+                    "Could not connect to the AI service. Please check your internet connection and try again.",
+                    timestamp,
+                    503,
+                    chat_session_id=active_chat_session_id,
+                ),
+                client_id=client_id,
+                should_set_cookie=should_set_client_cookie,
             )
 
         except openai.BadRequestError as e:
             _log_known_chat_error("chat.bad_request", e)
-            return _render_error_message(
-                "AI Service Error",
-                "The AI service rejected the request. Please try again later.",
-                timestamp,
-                502,
+            return _finalize_response_with_client_cookie(
+                _render_error_response(
+                    "AI Service Error",
+                    "The AI service rejected the request. Please try again later.",
+                    timestamp,
+                    502,
+                    chat_session_id=active_chat_session_id,
+                ),
+                client_id=client_id,
+                should_set_cookie=should_set_client_cookie,
             )
 
         except openai.APIError as e:
             _log_known_chat_error("chat.api_error", e)
-            return _render_error_message(
-                "AI Service Error",
-                "The AI service encountered an error. Please try again later.",
-                timestamp,
-                500,
+            return _finalize_response_with_client_cookie(
+                _render_error_response(
+                    "AI Service Error",
+                    "The AI service encountered an error. Please try again later.",
+                    timestamp,
+                    500,
+                    chat_session_id=active_chat_session_id,
+                ),
+                client_id=client_id,
+                should_set_cookie=should_set_client_cookie,
             )
 
         except EmptyModelResponseError as e:
             _log_known_chat_error("chat.empty_model_response", e)
-            return _render_error_message(
-                "AI Service Error",
-                "The AI service returned an empty response. Please try again later.",
-                timestamp,
-                502,
+            return _finalize_response_with_client_cookie(
+                _render_error_response(
+                    "AI Service Error",
+                    "The AI service returned an empty response. Please try again later.",
+                    timestamp,
+                    502,
+                    chat_session_id=active_chat_session_id,
+                ),
+                client_id=client_id,
+                should_set_cookie=should_set_client_cookie,
             )
 
         except Exception as e:
             logger.error("chat.unexpected_error detail=%s", str(e), exc_info=True)
-            return _render_error_message(
-                "Unexpected Error",
-                "Sorry, something went wrong. Please try again.",
-                timestamp,
-                500,
+            return _finalize_response_with_client_cookie(
+                _render_error_response(
+                    "Unexpected Error",
+                    "Sorry, something went wrong. Please try again.",
+                    timestamp,
+                    500,
+                    chat_session_id=active_chat_session_id,
+                ),
+                client_id=client_id,
+                should_set_cookie=should_set_client_cookie,
             )
 
     @app.get("/health")

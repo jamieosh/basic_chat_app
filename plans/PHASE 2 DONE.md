@@ -4,6 +4,45 @@ Completed Phase 2 backlog items move here once they are shipped.
 
 ## Completed Items
 
+### P2-02 Anonymous Client Identity And Chat Ownership
+
+Priority: P0
+
+Delivered:
+
+- issued an anonymous browser-scoped client ID cookie on first visit and reused it across later requests
+- associated persisted chats with the resolved client ID instead of a shared placeholder identity
+- enforced client ownership on chat-targeted writes and returned a generic not-found style response for missing or foreign chat targets
+
+Acceptance criteria met:
+
+- the same browser/client keeps the same anonymous ID across requests
+- a fresh browser/client starts with an empty chat state
+- requests targeting another client scope receive a not-found style response
+
+What the user sees:
+Their chats stay associated with their browser instead of being implicitly shared across clients.
+
+### P2-03 Multi-Turn Turn-Processing Path
+
+Priority: P0
+
+Delivered:
+
+- extended the message send path so a first send creates a persisted chat and later sends append to the same chat
+- loaded the stored transcript before calling the model and passed prior turns back to OpenAI in order
+- persisted the assistant reply back into the same chat on success
+- kept failed model calls from creating fake assistant replies while preserving the user turn and active chat session ID
+
+Acceptance criteria met:
+
+- tests verify later turns include prior context in the OpenAI request
+- a failed model call does not create a fake assistant reply
+- the route contract remains understandable and localized through the existing HTMX submit path
+
+What the user sees:
+Follow-up questions on the current page now continue the same chat instead of starting over each time.
+
 ### P2-01 Conversation Persistence Foundation
 
 Priority: P0

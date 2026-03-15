@@ -4,6 +4,7 @@ import httpx
 import openai
 import pytest
 
+from agents.base_agent import ConversationTurn
 from agents.openai_agent import EmptyModelResponseError, OpenAIAgent
 
 
@@ -161,6 +162,44 @@ def test_process_message_prepends_rendered_context_when_present():
 
     assert reply == "Context reply"
     assert captured["messages"][1]["content"] == "Use metric units.\n\nHow far is it?"
+
+
+def test_process_message_includes_prior_history_before_latest_user_turn():
+    agent = OpenAIAgent(api_key="test-key")
+    captured = {}
+
+    def fake_create(**kwargs):
+        captured.update(kwargs)
+        return types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="History reply"))]
+        )
+
+    agent.client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=fake_create)
+        )
+    )
+
+    reply = agent.process_message(
+        "What next?",
+        conversation_history=[
+            ConversationTurn(role="user", content="First question"),
+            ConversationTurn(role="assistant", content="First answer"),
+        ],
+    )
+
+    assert reply == "History reply"
+    assert [message["role"] for message in captured["messages"]] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert [message["content"] for message in captured["messages"][1:]] == [
+        "First question",
+        "First answer",
+        "What next?",
+    ]
 
 
 def test_default_context_prompt_is_empty_for_neutral_baseline():

@@ -2,6 +2,21 @@
 
 ## 2026-03-15
 
+### Ship Phase 2 Anonymous Client Ownership
+
+- Added anonymous browser-scoped client ID issuance with a stable `HttpOnly` cookie and reused it across requests.
+- Removed app-level dependence on the old placeholder client identity and aligned tests with explicit client ownership.
+- Documented the ownership contract in the Phase 2 planning docs so later chat-scoped routes keep enforcing generic not-found behavior.
+- Added regression coverage for cookie issuance, cookie reuse, and client-scoped chat isolation.
+
+### Ship Phase 2 Multi-Turn Turn Processing
+
+- Extended the send-message flow to create a persisted chat on first send and append later turns to the same chat through a hidden `chat_session_id`.
+- Added history-aware agent input so stored prior `user` and `assistant` turns are sent back to OpenAI in order before the latest user message.
+- Persisted the user turn before the model call, persisted the assistant turn only on success, and kept the active chat session ID available even after model failures.
+- Added per-client default chat title generation and HTTP-level not-found handling for missing or foreign chat targets on the write path.
+- Expanded route, agent, repository, and Playwright coverage for multi-turn continuity, failure behavior, and same-page chat reuse.
+
 ### Ship Phase 2 Persistence Foundation
 
 - Added a SQLite-backed persistence package with explicit schema bootstrap for `chat_sessions` and `chat_messages`.

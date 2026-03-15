@@ -99,6 +99,59 @@ def test_chat_disables_duplicate_submit_while_request_is_in_flight(page: Page, l
     assert len(requests) == 1
 
 
+def test_chat_reuses_chat_session_id_for_second_send_without_reload(page: Page, live_server_url: str) -> None:
+    requests = []
+
+    def handle_route(route):
+        request = route.request
+        requests.append(request.post_data or "")
+        if len(requests) == 1:
+            route.fulfill(
+                status=200,
+                content_type="text/html",
+                body="""
+                <div class="message bot-message">
+                    <div class="message-content">
+                        <div class="message-body">First reply</div>
+                        <div class="message-timestamp">10:00 AM</div>
+                    </div>
+                </div>
+                <input type="hidden" id="chat-session-id" name="chat_session_id" value="42" hx-swap-oob="true">
+                """,
+            )
+            return
+
+        route.fulfill(
+            status=200,
+            content_type="text/html",
+            body="""
+            <div class="message bot-message">
+                <div class="message-content">
+                    <div class="message-body">Second reply</div>
+                    <div class="message-timestamp">10:01 AM</div>
+                </div>
+            </div>
+            <input type="hidden" id="chat-session-id" name="chat_session_id" value="42" hx-swap-oob="true">
+            """,
+        )
+
+    page.route("**/send-message-htmx", handle_route)
+    page.goto(f"{live_server_url}/")
+
+    page.fill("#message-input", "First message")
+    page.click("#chat-form button[type='submit']")
+    expect(page.locator("#chat-session-id")).to_have_value("42")
+
+    page.fill("#message-input", "Second message")
+    page.click("#chat-form button[type='submit']")
+
+    expect(page.locator("#chat-session-id")).to_have_value("42")
+    expect(page.locator("#chat-box .user-message")).to_have_count(2)
+    expect(page.locator("#chat-box .bot-message .message-body").last).to_have_text("Second reply")
+    assert len(requests) == 2
+    assert "chat_session_id=42" in requests[1]
+
+
 def test_chat_swaps_server_error_message_into_chat(page: Page, live_server_url: str) -> None:
     page.route(
         "**/send-message-htmx",

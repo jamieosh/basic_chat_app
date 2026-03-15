@@ -8,8 +8,6 @@ from pathlib import Path
 
 from persistence.db import connect_database
 
-DEFAULT_PLACEHOLDER_CLIENT_ID = "local-single-user"
-
 
 @dataclass(frozen=True)
 class ChatSession:
@@ -35,6 +33,19 @@ class ChatMessage:
 class ChatRepository:
     def __init__(self, db_path: Path):
         self._db_path = db_path
+
+    def next_default_chat_title(self, *, client_id: str) -> str:
+        with closing(connect_database(self._db_path)) as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS chat_count
+                FROM chat_sessions
+                WHERE client_id = ?
+                """,
+                (client_id,),
+            ).fetchone()
+            chat_count = int(row["chat_count"]) if row is not None else 0
+            return f"Chat {chat_count + 1}"
 
     def create_chat(self, *, client_id: str, title: str) -> ChatSession:
         timestamp = _utcnow()

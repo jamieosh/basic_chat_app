@@ -6,45 +6,6 @@ See [`plans/PARKING LOT.md`](/Users/jamie/Development/basic_chat_app/plans/PARKI
 
 ## Backlog Items
 
-### P2-02 Anonymous Client Identity And Chat Ownership
-
-Priority: P0
-
-Deliver:
-
-- issue an anonymous client ID cookie on first visit
-- associate every chat with that client ID
-- scope chat reads and writes to the current client
-
-Acceptance criteria:
-
-- the same browser can reload and still see its prior chats
-- a fresh browser/client receives an empty state
-- requests for another client scope return a not-found style response
-
-What the user will see:
-Their chats stay associated with their browser, so when they come back they see their own history rather than a shared global chat list.
-
-### P2-03 Multi-Turn Turn-Processing Path
-
-Priority: P0
-
-Deliver:
-
-- extend the agent input path so prior turns can be included when sending a new message
-- load the stored transcript before calling the model
-- persist the assistant reply back into the same chat
-- define deterministic behavior for failed model calls
-
-Acceptance criteria:
-
-- tests verify later turns include prior context in the OpenAI request
-- a failed model call does not create a fake assistant reply
-- the route contract remains understandable and localized
-
-What the user will see:
-Follow-up questions will make sense in context because the assistant will remember earlier messages in the same chat.
-
 ### P2-04 Routes, URLs, And Transcript Rendering
 
 Priority: P0
@@ -61,6 +22,11 @@ Acceptance criteria:
 - opening an existing chat renders the full stored transcript
 - page reload keeps the current chat context
 - users with no visible chats land on the Chat Start Screen
+
+Implementation notes:
+
+- `/chats/{chat_id}` must enforce `P2-02` ownership at the HTTP layer
+- the route should return the same generic not-found response for both nonexistent chats and chats owned by another client
 
 What the user will see:
 They can reopen an existing chat from its URL and see the full earlier transcript instead of starting from a blank screen after refresh.
