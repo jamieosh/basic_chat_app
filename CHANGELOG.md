@@ -2,6 +2,14 @@
 
 ## 2026-03-15
 
+### Ship Phase 3 Chat Harness Vocabulary And Contracts
+
+- Added a normalized `ChatHarness` contract with serialization-friendly request, result, event, failure, identity, capability, and observability types in `agents/chat_harness.py`, while keeping `BaseAgent` only as a compatibility shim.
+- Refactored the FastAPI startup, readiness, and send-message flow in `main.py`, `utils/diagnostics.py`, and `services/chat_turns.py` so the app layer now talks to harness-level contracts and normalized failures instead of catching OpenAI SDK exceptions directly.
+- Adapted the shipped OpenAI path in `agents/openai_agent.py` to expose explicit harness identity, normalized `run()` behavior, and harness-owned observability metadata without changing the current non-streaming chat behavior.
+- Updated contributor-facing guidance in `README.md` and `plans/PHASE 3 DESIGN.md`, moved `P3-01` out of `plans/PHASE 3 BACKLOG.md`, and recorded the shipped slice in `plans/done/PHASE 3 DONE.md`.
+- Verification passed with `uv run ruff check .`, `uv run mypy .`, and `uv run python -m pytest` (`178 passed`).
+
 ### Ship Phase 2 Test And Documentation Expansion
 
 - Added repository, service, and route regression coverage for replayed `failed` and `conflicted` requests, duplicate `processing` requests, archived target rejection, and archived mid-flight conflict handling.
