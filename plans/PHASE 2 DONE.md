@@ -4,6 +4,28 @@ Completed Phase 2 backlog items move here once they are shipped.
 
 ## Completed Items
 
+### P2-06 Chat Titles And Delete Lifecycle
+
+Priority: P1
+
+Delivered:
+
+- kept default chat naming deterministic per browser/client with simple titles such as `Chat 1`, `Chat 2`
+- left title generation behind a repository method so future naming behavior can change without route churn
+- added user-facing delete with confirmation from the active chat header
+- routed delete back into the next visible chat, or to the Chat Start Screen when no visible chats remain
+- kept archived chats hidden from the Phase 2 UI while adding explicit backend archive-state coverage
+
+Acceptance criteria met:
+
+- new chats receive deterministic default titles
+- deleting a chat requires confirmation
+- deleting the active chat routes the user to the next available visible chat, or to the Chat Start Screen if none remain
+- archived chats do not appear in the Phase 2 UI
+
+What the user sees:
+Chats now have simple default names, and deleting a chat cleanly moves them to another visible chat or back to the start screen instead of leaving the shell in a broken state.
+
 ### P2-05 Multi-Chat Shell And Navigation UX
 
 Priority: P1

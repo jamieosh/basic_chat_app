@@ -45,12 +45,18 @@ def test_chat_repository_scopes_visibility_and_soft_delete(tmp_path):
     visible_chat = repository.create_chat(client_id="client-a", title="Visible")
     repository.create_chat(client_id="client-b", title="Other client")
 
-    assert repository.soft_delete_chat(chat_session_id=visible_chat.id, client_id="client-a") is True
-    assert repository.soft_delete_chat(chat_session_id=visible_chat.id, client_id="client-a") is False
+    assert (
+        repository.soft_delete_chat(chat_session_id=visible_chat.id, client_id="client-a") is True
+    )
+    assert (
+        repository.soft_delete_chat(chat_session_id=visible_chat.id, client_id="client-a") is False
+    )
     assert repository.get_chat(chat_session_id=visible_chat.id, client_id="client-a") is None
     assert repository.get_chat(chat_session_id=visible_chat.id, client_id="client-b") is None
     assert repository.list_visible_chats(client_id="client-a") == []
-    assert [chat.title for chat in repository.list_visible_chats(client_id="client-b")] == ["Other client"]
+    assert [chat.title for chat in repository.list_visible_chats(client_id="client-b")] == [
+        "Other client"
+    ]
 
 
 def test_chat_repository_persists_data_across_instances(tmp_path):
@@ -84,11 +90,53 @@ def test_chat_repository_generates_next_default_title_per_client(tmp_path):
     repository = ChatRepository(db_path)
 
     assert repository.next_default_chat_title(client_id="client-a") == "Chat 1"
-    repository.create_chat(client_id="client-a", title=repository.next_default_chat_title(client_id="client-a"))
-    repository.create_chat(client_id="client-b", title=repository.next_default_chat_title(client_id="client-b"))
+    repository.create_chat(
+        client_id="client-a", title=repository.next_default_chat_title(client_id="client-a")
+    )
+    repository.create_chat(
+        client_id="client-b", title=repository.next_default_chat_title(client_id="client-b")
+    )
 
     assert repository.next_default_chat_title(client_id="client-a") == "Chat 2"
     assert repository.next_default_chat_title(client_id="client-b") == "Chat 2"
+
+
+def test_chat_repository_keeps_default_title_sequence_after_delete_and_archive(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+
+    first_chat = repository.create_chat(
+        client_id="client-a", title=repository.next_default_chat_title(client_id="client-a")
+    )
+    second_chat = repository.create_chat(
+        client_id="client-a", title=repository.next_default_chat_title(client_id="client-a")
+    )
+
+    assert repository.soft_delete_chat(chat_session_id=first_chat.id, client_id="client-a") is True
+    assert repository.archive_chat(chat_session_id=second_chat.id, client_id="client-a") is True
+    assert repository.next_default_chat_title(client_id="client-a") == "Chat 3"
+
+
+def test_chat_repository_hides_archived_chats_from_visible_queries(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+
+    archived_chat = repository.create_chat(client_id="client-a", title="Archive me")
+    visible_chat = repository.create_chat(client_id="client-a", title="Keep me")
+
+    assert repository.archive_chat(chat_session_id=archived_chat.id, client_id="client-a") is True
+    assert repository.archive_chat(chat_session_id=archived_chat.id, client_id="client-a") is False
+    assert repository.get_chat(chat_session_id=archived_chat.id, client_id="client-a") is None
+    assert [chat.title for chat in repository.list_visible_chats(client_id="client-a")] == [
+        "Keep me"
+    ]
+    assert (
+        repository.list_messages_for_chat(chat_session_id=archived_chat.id, client_id="client-a")
+        == []
+    )
+    assert repository.get_chat(chat_session_id=visible_chat.id, client_id="client-a") is not None
 
 
 def test_chat_repository_rejects_messages_for_missing_or_hidden_chat(tmp_path):

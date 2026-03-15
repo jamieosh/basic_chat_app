@@ -16,6 +16,7 @@ Those documents define the long-term direction and maturity phases. This README 
 - Server-rendered web chat UI with HTMX interactions.
 - Multi-turn chat flow with persisted history per chat.
 - Multiple saved chats per browser/client with sidebar or drawer navigation.
+- Deterministic default chat titles plus confirmed delete behavior that returns users to the next visible chat or the start screen.
 - `New chat` start screen plus chat restoration through route-backed URLs.
 - In-flight request locking so duplicate submissions are ignored while a response is pending.
 - Lightweight loading feedback while switching chats.
@@ -195,6 +196,16 @@ Run the frontend smoke test only:
 uv run python -m pytest tests/e2e -q
 ```
 
+Run the visual regression slice only:
+```bash
+uv run python -m pytest tests/e2e/test_chat_smoke.py -q -k "visual_"
+```
+
+Refresh the committed visual baselines after an intentional UI change:
+```bash
+UPDATE_VISUAL_BASELINES=1 uv run python -m pytest tests/e2e/test_chat_smoke.py -q -k "visual_"
+```
+
 Run lint and type checks:
 ```bash
 uv run ruff check .
@@ -241,6 +252,7 @@ For the default no-auth baseline, keep `CORS_ALLOW_CREDENTIALS=false`. If you en
 - Model and runtime settings: use environment variables first, then `utils/settings.py` if you need to change the supported configuration surface.
 - Provider wiring: edit `agents/openai_agent.py` to change OpenAI-specific request construction or swap in a different agent implementation behind the existing app contract.
 - Chat UI behavior: edit `templates/components/chat.html`, `static/js/chat.js`, and `static/css/chat.css`.
+- Visual baselines: update `tests/e2e/snapshots/` only when a deliberate UI change is accepted.
 
 ### Baseline Defaults
 
@@ -248,7 +260,7 @@ For the default no-auth baseline, keep `CORS_ALLOW_CREDENTIALS=false`. If you en
 - The default chat request uses a fixed prompt name. With the default `gpt-5-mini` model, the effective request temperature remains the model default.
 - The default system prompt is generic.
 - The default user-context prompt remains available as a customization seam, but contributes nothing unless you explicitly add context variables or edit the template.
-- The app does not keep multi-turn memory in Phase 1; each request is handled independently.
+- The app keeps persisted multi-turn history only within the current browser/client's saved chats.
 - The default request UX stays visually quiet on success: only the typing dots appear while a response is in flight, and the footer status area is reserved for validation or failure messaging.
 
 ### Best Practices

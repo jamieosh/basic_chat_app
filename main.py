@@ -16,7 +16,13 @@ from fastapi.templating import Jinja2Templates
 
 from agents.base_agent import ConversationTurn
 from agents.openai_agent import EmptyModelResponseError, OpenAIAgent
-from persistence import ChatMessage, ChatRepository, ChatSession, StorageInitializationError, bootstrap_database
+from persistence import (
+    ChatMessage,
+    ChatRepository,
+    ChatSession,
+    StorageInitializationError,
+    bootstrap_database,
+)
 from utils.diagnostics import (
     DiagnosticCheck,
     StartupDiagnosticsError,
@@ -69,7 +75,9 @@ def _get_agent(request: Request) -> OpenAIAgent:
         raise HTTPException(status_code=503, detail="AI agent unavailable") from exc
 
 
-def _render_bot_message(body_html: str, timestamp: str, title: str | None = None, *, is_error: bool = False) -> str:
+def _render_bot_message(
+    body_html: str, timestamp: str, title: str | None = None, *, is_error: bool = False
+) -> str:
     message_classes = "message bot-message fade-in"
     if is_error:
         message_classes += " error-message"
@@ -107,7 +115,9 @@ def _render_chat_session_id_input_value(chat_session_id: int | None) -> str:
     )
 
 
-def _render_htmx_response(content: str, status_code: int = 200, *, chat_session_id: int | None = None) -> HTMLResponse:
+def _render_htmx_response(
+    content: str, status_code: int = 200, *, chat_session_id: int | None = None
+) -> HTMLResponse:
     response_content = content
     if chat_session_id is not None:
         response_content = f"{response_content}\n{_render_chat_session_id_input(chat_session_id)}"
@@ -201,7 +211,9 @@ def _log_known_chat_error(event: str, exc: Exception) -> None:
     logger.warning("%s detail=%s", event, str(exc))
 
 
-def _finalize_response_with_client_cookie(response: Response, *, client_id: str, should_set_cookie: bool) -> Response:
+def _finalize_response_with_client_cookie(
+    response: Response, *, client_id: str, should_set_cookie: bool
+) -> Response:
     if should_set_cookie:
         set_client_id_cookie(response, client_id)
     return response
@@ -380,10 +392,32 @@ def _response_with_optional_push_url(
     chat_session_id: int | None,
 ) -> HTMLResponse:
     response.headers["HX-Push-Url"] = (
-        _chat_url_path(chat_session_id)
-        if chat_session_id is not None
-        else _chat_start_url_path()
+        _chat_url_path(chat_session_id) if chat_session_id is not None else _chat_start_url_path()
     )
+    return response
+
+
+def _render_chat_page_partial_response(
+    context: dict[str, object],
+    *,
+    status_code: int = 200,
+    push_url: bool = False,
+    chat_session_id: int | None = None,
+) -> HTMLResponse:
+    response = HTMLResponse(
+        content="\n".join(
+            [
+                _render_transcript_partial(context),
+                _render_chat_view_updates(
+                    context,
+                    chat_session_id=chat_session_id,
+                ),
+            ]
+        ),
+        status_code=status_code,
+    )
+    if push_url:
+        response = _response_with_optional_push_url(response, chat_session_id=chat_session_id)
     return response
 
 
@@ -461,7 +495,9 @@ async def lifespan(app: FastAPI):
             logger.critical("startup.failed check=%s detail=%s", failure.name, failure.detail)
         raise
     except StorageInitializationError as exc:
-        logger.critical("startup.failed check=storage_initialization detail=%s", str(exc), exc_info=True)
+        logger.critical(
+            "startup.failed check=storage_initialization detail=%s", str(exc), exc_info=True
+        )
         raise StartupDiagnosticsError(
             [
                 DiagnosticCheck(
@@ -474,7 +510,9 @@ async def lifespan(app: FastAPI):
             ]
         ) from exc
     except Exception as exc:
-        logger.critical("startup.failed check=agent_initialization detail=%s", str(exc), exc_info=True)
+        logger.critical(
+            "startup.failed check=agent_initialization detail=%s", str(exc), exc_info=True
+        )
         raise StartupDiagnosticsError(
             [
                 DiagnosticCheck(
@@ -667,19 +705,10 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             client_id=client_id,
             chat_session_id=None,
         )
-        response = _response_with_optional_push_url(
-            HTMLResponse(
-                content="\n".join(
-                    [
-                        _render_transcript_partial(context),
-                        _render_chat_view_updates(
-                            context,
-                            chat_session_id=cast(int | None, context["active_chat_session_id"]),
-                        ),
-                    ]
-                ),
-                status_code=status_code,
-            ),
+        response = _render_chat_page_partial_response(
+            context,
+            status_code=status_code,
+            push_url=True,
             chat_session_id=None,
         )
         return _finalize_response_with_client_cookie(
@@ -696,20 +725,88 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             client_id=client_id,
             chat_session_id=chat_id,
         )
-        response = HTMLResponse(
-            content="\n".join(
-                [
-                    _render_transcript_partial(context),
-                    _render_chat_view_updates(
-                        context,
-                        chat_session_id=cast(int | None, context["active_chat_session_id"]),
-                    ),
-                ]
-            ),
+        response = _render_chat_page_partial_response(
+            context,
             status_code=status_code,
+            push_url=status_code == 200,
+            chat_session_id=cast(int | None, context["active_chat_session_id"]),
         )
-        if status_code == 200:
-            response = _response_with_optional_push_url(response, chat_session_id=chat_id)
+        return _finalize_response_with_client_cookie(
+            response, client_id=client_id, should_set_cookie=should_set_client_cookie
+        )
+
+    @app.post("/chats/{chat_id}/delete", response_class=HTMLResponse)
+    async def delete_chat(request: Request, chat_id: int):
+        client_id, should_set_client_cookie = resolve_client_id(request)
+
+        if not _is_chat_service_available(request.app):
+            service_status_message = _chat_service_unavailable_detail(request.app)
+            logger.warning(
+                "chat.delete_unavailable chat_session_id=%s client_id=%s detail=%s",
+                chat_id,
+                client_id,
+                service_status_message,
+            )
+            return _finalize_response_with_client_cookie(
+                _render_error_response(
+                    "Service Unavailable",
+                    service_status_message,
+                    datetime.now().strftime("%I:%M %p"),
+                    503,
+                ),
+                client_id=client_id,
+                should_set_cookie=should_set_client_cookie,
+            )
+
+        repository = request.app.state.chat_repository
+        deleted = repository.soft_delete_chat(chat_session_id=chat_id, client_id=client_id)
+        if not deleted:
+            context, status_code = _chat_shell_context(
+                request,
+                client_id=client_id,
+                chat_session_id=chat_id,
+            )
+            response = _render_chat_page_partial_response(
+                context,
+                status_code=status_code,
+                push_url=False,
+                chat_session_id=cast(int | None, context["active_chat_session_id"]),
+            )
+            return _finalize_response_with_client_cookie(
+                response,
+                client_id=client_id,
+                should_set_cookie=should_set_client_cookie,
+            )
+
+        next_chat_session_id = None
+        visible_chats = repository.list_visible_chats(client_id=client_id)
+        if visible_chats:
+            next_chat_session_id = visible_chats[0].id
+
+        agent = _get_agent(request)
+        page_context = _chat_page_context(
+            request,
+            display_name=agent.display_name,
+            model_display_name=agent.model_display_name,
+            chat_available=True,
+            service_status_message=_chat_service_unavailable_detail(request.app),
+            page_state=_load_chat_page_state(
+                repository,
+                client_id=client_id,
+                chat_session_id=next_chat_session_id,
+            ),
+        )
+        response = _render_chat_page_partial_response(
+            page_context,
+            push_url=True,
+            chat_session_id=next_chat_session_id,
+        )
+        logger.info(
+            "chat.deleted chat_session_id=%s client_id=%s next_chat_session_id=%s",
+            chat_id,
+            client_id,
+            next_chat_session_id,
+        )
         return _finalize_response_with_client_cookie(
             response,
             client_id=client_id,

@@ -2,6 +2,14 @@
 
 ## 2026-03-15
 
+### Ship Phase 2 Chat Titles And Delete Lifecycle
+
+- Added deterministic per-client default chat titles and kept title generation isolated behind the repository layer for later evolution.
+- Added confirmed chat deletion from the active transcript header and routed delete flows into the next visible chat or back to the Chat Start Screen when no visible chats remain.
+- Kept archived chats hidden from the visible Phase 2 shell while adding explicit repository coverage for archived-state behavior.
+- Tightened the active-chat header for mobile with compact icon-only drawer, new-chat, and delete controls so chat metadata fits without wasting height.
+- Added route, repository, Playwright behavior, and visual-regression coverage for delete lifecycle behavior plus high-risk desktop/mobile shell layouts.
+
 ### Ship Phase 2 Multi-Chat Shell And Navigation UX
 
 - Added a dedicated Chat Start Screen route and HTMX partial so `New chat` returns to a real start state without breaking `/` redirect behavior for existing chats.

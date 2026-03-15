@@ -1,6 +1,6 @@
 <div
     id="chat-view-header"
-    class="chat-view-header flex flex-col gap-2 md:flex-row md:items-center md:justify-between border-b border-gray-200 px-5 py-4"
+    class="chat-view-header border-b border-gray-200 px-5 py-4"
     {% if oob_swap %}hx-swap-oob="true"{% endif %}
 >
     <button
@@ -9,19 +9,42 @@
         data-chat-drawer-toggle
         aria-controls="chat-list-panel"
         aria-expanded="false"
+        aria-label="Open chat list"
+        title="Open chat list"
     >
         <span class="chat-drawer-toggle-icon" aria-hidden="true">
             <span></span>
             <span></span>
             <span></span>
         </span>
-        <span>Chats</span>
     </button>
     {% if view_state == "active" and selected_chat %}
-        <div>
-            <h2 class="chat-view-title text-lg font-bold text-gray-900 m-0">{{ selected_chat.title }}</h2>
+        <div class="chat-view-body">
+            <div class="chat-view-primary">
+                <h2 class="chat-view-title text-lg font-bold text-gray-900 m-0">{{ selected_chat.title }}</h2>
+            </div>
+            <div class="chat-view-actions">
+                <div class="chat-view-meta text-sm text-gray-500">{{ format_chat_timestamp(selected_chat.updated_at) }}</div>
+                <button
+                    type="button"
+                    hx-post="{{ request.url_for('delete_chat', chat_id=selected_chat.id) }}"
+                    hx-target="#chat-box"
+                    hx-swap="innerHTML"
+                    hx-confirm="Delete this chat? This cannot be undone."
+                    class="chat-delete-button"
+                    data-chat-nav="delete"
+                    aria-label="Delete chat"
+                    title="Delete chat"
+                >
+                    <svg viewBox="0 0 24 24" class="chat-delete-icon" aria-hidden="true" focusable="false">
+                        <path
+                            d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9zm1 11a2 2 0 0 1-2-2V8h12v10a2 2 0 0 1-2 2H8z"
+                            fill="currentColor"
+                        />
+                    </svg>
+                </button>
+            </div>
         </div>
-        <div class="chat-view-meta text-sm text-gray-500">{{ format_chat_timestamp(selected_chat.updated_at) }}</div>
     {% elif view_state == "not_found" %}
         <div>
             <h2 class="chat-view-title text-lg font-bold text-gray-900 m-0">Chat not found</h2>

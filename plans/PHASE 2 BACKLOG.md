@@ -6,28 +6,6 @@ See [`plans/PARKING LOT.md`](/Users/jamie/Development/basic_chat_app/plans/PARKI
 
 ## Backlog Items
 
-### P2-06 Chat Titles And Delete Lifecycle
-
-Priority: P1
-
-Deliver:
-
-- generate default per-client chat titles such as `Chat 1`, `Chat 2`
-- isolate title generation behind a method that can change later
-- add delete behavior with confirmation
-- after delete, open the next available visible chat or return to the Chat Start Screen
-- support archived flags in backend state without exposing archive UI in Phase 2
-
-Acceptance criteria:
-
-- new chats receive deterministic default titles
-- deleting a chat requires confirmation
-- deleting the active chat routes the user to the next available visible chat, or to the Chat Start Screen if none remain
-- archived chats do not appear in the Phase 2 UI
-
-What the user will see:
-Chats will have simple default names, and users will be able to delete chats cleanly without being left in a broken or empty state.
-
 ### P2-07 Concurrency, Integrity, And Failure-Mode Hardening
 
 Priority: P1

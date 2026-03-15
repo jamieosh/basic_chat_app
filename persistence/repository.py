@@ -72,7 +72,9 @@ class ChatRepository:
                     raise RuntimeError("Newly created chat session could not be reloaded.")
                 return _row_to_chat_session(row)
 
-    def create_message(self, *, chat_session_id: int, client_id: str, role: str, content: str) -> ChatMessage:
+    def create_message(
+        self, *, chat_session_id: int, client_id: str, role: str, content: str
+    ) -> ChatMessage:
         timestamp = _utcnow()
         with closing(connect_database(self._db_path)) as connection:
             with connection:
@@ -85,7 +87,9 @@ class ChatRepository:
                     (chat_session_id, client_id),
                 ).fetchone()
                 if chat_row is None:
-                    raise LookupError(f"Chat {chat_session_id} was not found for client {client_id}.")
+                    raise LookupError(
+                        f"Chat {chat_session_id} was not found for client {client_id}."
+                    )
 
                 next_position = connection.execute(
                     """
@@ -167,6 +171,20 @@ class ChatRepository:
                     """
                     UPDATE chat_sessions
                     SET deleted_at = ?, updated_at = ?
+                    WHERE id = ? AND client_id = ? AND archived_at IS NULL AND deleted_at IS NULL
+                    """,
+                    (timestamp, timestamp, chat_session_id, client_id),
+                )
+                return cursor.rowcount > 0
+
+    def archive_chat(self, *, chat_session_id: int, client_id: str) -> bool:
+        timestamp = _utcnow()
+        with closing(connect_database(self._db_path)) as connection:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE chat_sessions
+                    SET archived_at = ?, updated_at = ?
                     WHERE id = ? AND client_id = ? AND archived_at IS NULL AND deleted_at IS NULL
                     """,
                     (timestamp, timestamp, chat_session_id, client_id),

@@ -506,6 +506,10 @@ class ChatUI {
             return 'Starting a new chat...';
         }
 
+        if (trigger.dataset.chatNav === 'delete') {
+            return 'Deleting chat...';
+        }
+
         return 'Loading chat...';
     }
 
