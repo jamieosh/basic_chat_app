@@ -134,6 +134,20 @@ def test_home_renders_chat_header(client):
     assert "Chat with AI Chat" in response.text
     assert client.app.state.agent.display_name in response.text
     assert client.app.state.agent.model_display_name in response.text
+    assert "Ask the first question" in response.text
+
+
+def test_home_redirects_to_most_recent_visible_chat(client):
+    repository = client.app.state.chat_repository
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    first_chat = repository.create_chat(client_id="client-a", title="Chat 1")
+    second_chat = repository.create_chat(client_id="client-a", title="Chat 2")
+
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"].endswith(f"/chats/{second_chat.id}")
+    assert first_chat.id != second_chat.id
 
 
 def test_home_sets_anonymous_client_cookie_on_first_visit(client):
@@ -216,6 +230,7 @@ def test_send_message_creates_chat_and_persists_first_turn(client, monkeypatch):
 
     assert response.status_code == 200
     created_chat_session_id = _extract_chat_session_id(response.text)
+    assert response.headers["HX-Push-Url"].endswith(f"/chats/{created_chat_session_id}")
     repository = client.app.state.chat_repository
     client_id = client.cookies.get(CLIENT_ID_COOKIE_NAME)
     chats = repository.list_visible_chats(client_id=client_id)
@@ -248,6 +263,7 @@ def test_send_message_appends_to_existing_chat_instead_of_creating_another(clien
 
     assert second_response.status_code == 200
     assert _extract_chat_session_id(second_response.text) == chat_session_id
+    assert second_response.headers["HX-Push-Url"].endswith(f"/chats/{chat_session_id}")
 
     repository = client.app.state.chat_repository
     client_id = client.cookies.get(CLIENT_ID_COOKIE_NAME)
@@ -302,6 +318,80 @@ def test_send_message_returns_generic_not_found_for_missing_or_foreign_chat(clie
     assert missing_response.status_code == 404
     assert foreign_response.text == missing_response.text
     assert "The requested chat could not be found." in foreign_response.text
+
+
+def test_chat_page_renders_full_stored_transcript(client):
+    repository = client.app.state.chat_repository
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+    repository.create_message(chat_session_id=chat.id, client_id="client-a", role="user", content="First")
+    repository.create_message(chat_session_id=chat.id, client_id="client-a", role="assistant", content="Reply one")
+    repository.create_message(chat_session_id=chat.id, client_id="client-a", role="user", content="Second")
+    repository.create_message(chat_session_id=chat.id, client_id="client-a", role="assistant", content="Reply two")
+
+    response = client.get(f"/chats/{chat.id}")
+
+    assert response.status_code == 200
+    assert "Saved conversation" in response.text
+    assert "Chat 1" in response.text
+    assert "First" in response.text
+    assert "Reply one" in response.text
+    assert "Second" in response.text
+    assert "Reply two" in response.text
+    assert f'value="{chat.id}"' in response.text
+
+
+def test_chat_page_returns_generic_not_found_for_missing_or_foreign_chat(client):
+    repository = client.app.state.chat_repository
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    foreign_chat = repository.create_chat(client_id="client-b", title="Foreign")
+
+    foreign_response = client.get(f"/chats/{foreign_chat.id}")
+    missing_response = client.get("/chats/999999")
+
+    assert foreign_response.status_code == 404
+    assert missing_response.status_code == 404
+    assert foreign_response.text == missing_response.text
+    assert "Chat not found" in foreign_response.text
+
+
+def test_chat_list_partial_renders_visible_chats(client):
+    repository = client.app.state.chat_repository
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    first_chat = repository.create_chat(client_id="client-a", title="Chat 1")
+    second_chat = repository.create_chat(client_id="client-a", title="Chat 2")
+
+    response = client.get("/chat-list")
+
+    assert response.status_code == 200
+    assert 'id="chat-list-panel"' in response.text
+    assert "Chat 1" in response.text
+    assert "Chat 2" in response.text
+    assert response.text.index("Chat 2") < response.text.index("Chat 1")
+    assert str(first_chat.id) in response.text
+    assert str(second_chat.id) in response.text
+
+
+def test_chat_transcript_partial_renders_transcript_and_oob_updates(client):
+    repository = client.app.state.chat_repository
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    first_chat = repository.create_chat(client_id="client-a", title="Chat 1")
+    second_chat = repository.create_chat(client_id="client-a", title="Chat 2")
+    repository.create_message(chat_session_id=first_chat.id, client_id="client-a", role="user", content="First")
+    repository.create_message(chat_session_id=first_chat.id, client_id="client-a", role="assistant", content="Reply")
+
+    response = client.get(f"/chats/{first_chat.id}/transcript")
+
+    assert response.status_code == 200
+    assert response.headers["HX-Push-Url"].endswith(f"/chats/{first_chat.id}")
+    assert "First" in response.text
+    assert "Reply" in response.text
+    assert 'id="chat-view-header"' in response.text
+    assert 'id="chat-list-panel"' in response.text
+    assert 'hx-swap-oob="true"' in response.text
+    assert f'data-chat-id="{first_chat.id}"' in response.text
+    assert f'data-chat-id="{second_chat.id}"' in response.text
+    assert f'value="{first_chat.id}"' in response.text
 
 
 def test_send_message_persists_user_turn_without_assistant_reply_when_follow_up_fails(client, monkeypatch):

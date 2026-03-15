@@ -4,6 +4,26 @@ Completed Phase 2 backlog items move here once they are shipped.
 
 ## Completed Items
 
+### P2-04 Routes, URLs, And Transcript Rendering
+
+Priority: P0
+
+Delivered:
+
+- added chat URLs based on `/chats/{chat_id}` and restored the selected chat from the URL on full page load
+- made `/` render the Chat Start Screen for clients with no visible chats and redirect into the latest visible chat otherwise
+- added HTMX partial endpoints for transcript and chat-list updates so server-rendered navigation stays in sync with the active chat
+- rendered full stored transcripts for existing chats and kept generic not-found behavior for missing or foreign chat URLs
+
+Acceptance criteria met:
+
+- opening an existing chat renders the full stored transcript
+- page reload keeps the current chat context
+- users with no visible chats land on the Chat Start Screen
+
+What the user sees:
+They can reopen an existing chat from its URL, keep context after refresh, and land on a clear start screen when no chats exist yet.
+
 ### P2-02 Anonymous Client Identity And Chat Ownership
 
 Priority: P0

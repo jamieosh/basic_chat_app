@@ -1,5 +1,10 @@
 import openai
-from openai.types.chat import ChatCompletionMessageParam
+from openai.types.chat import (
+    ChatCompletionAssistantMessageParam,
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+)
 from pathlib import Path
 from typing import Any
 from collections.abc import Sequence
@@ -138,10 +143,19 @@ class OpenAIAgent(BaseAgent):
                 user_content = message
             
             # Format messages for OpenAI API
-            messages: list[ChatCompletionMessageParam] = [{"role": "system", "content": system_content}]
+            messages: list[ChatCompletionMessageParam] = [
+                ChatCompletionSystemMessageParam(role="system", content=system_content)
+            ]
             for turn in conversation_history or ():
-                messages.append({"role": turn.role, "content": turn.content})
-            messages.append({"role": "user", "content": user_content})
+                if turn.role == "user":
+                    messages.append(
+                        ChatCompletionUserMessageParam(role="user", content=turn.content)
+                    )
+                else:
+                    messages.append(
+                        ChatCompletionAssistantMessageParam(role="assistant", content=turn.content)
+                    )
+            messages.append(ChatCompletionUserMessageParam(role="user", content=user_content))
             
             # Log which prompt is being used
             self.logger.debug("openai_agent.prompt_selected prompt=%s", self.prompt_name)

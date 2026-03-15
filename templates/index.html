@@ -32,24 +32,23 @@
             }
         }
     </script>
-    <link rel="stylesheet" href="/static/css/chat.css">
+    <link rel="stylesheet" href="{{ request.url_for('static', path='css/chat.css') }}?v={{ asset_version }}">
 </head>
 <body class="bg-gray-100 h-screen flex flex-col">
-    <!-- Main container with responsive padding -->
-    <div class="container mx-auto max-w-3xl p-2 sm:p-4 flex-grow flex flex-col h-full">
-        <!-- Chat card with fixed layout -->
+    <div class="container mx-auto max-w-6xl p-2 sm:p-4 flex-grow flex flex-col h-full">
         <div class="bg-white shadow-lg overflow-hidden flex flex-col h-full">
-            <!-- Header - fixed at top -->
             <div class="bg-gray-700 text-white p-3 sm:p-4 flex items-center justify-between flex-shrink-0">
                 <h1 class="text-lg sm:text-xl font-bold">Chat with {{ display_name }}</h1>
                 <span class="text-xs sm:text-sm bg-gray-600 px-2 py-1">{{ model_display_name }}</span>
             </div>
-            
-            <!-- Include the chat component - will scroll in the middle -->
-            {% include "components/chat.html" %}
+
+            <div class="chat-workspace grid grid-cols-1 md:grid-cols-[280px,minmax(0,1fr)] flex-1 min-h-0">
+                {% include "components/chat_list.html" %}
+                {% include "components/chat.html" %}
+            </div>
         </div>
     </div>
 
-    <script src="/static/js/chat.js"></script>
+    <script src="{{ request.url_for('static', path='js/chat.js') }}?v={{ asset_version }}"></script>
 </body>
 </html>

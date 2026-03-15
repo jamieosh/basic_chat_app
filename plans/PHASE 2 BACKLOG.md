@@ -6,31 +6,6 @@ See [`plans/PARKING LOT.md`](/Users/jamie/Development/basic_chat_app/plans/PARKI
 
 ## Backlog Items
 
-### P2-04 Routes, URLs, And Transcript Rendering
-
-Priority: P0
-
-Deliver:
-
-- add chat URLs based on `/chats/{chat_id}`
-- add the Phase 2 Chat Start Screen behavior for users with no visible chats
-- add HTMX partial endpoints for transcript and chat-list updates
-- support restoring the selected chat from the URL
-
-Acceptance criteria:
-
-- opening an existing chat renders the full stored transcript
-- page reload keeps the current chat context
-- users with no visible chats land on the Chat Start Screen
-
-Implementation notes:
-
-- `/chats/{chat_id}` must enforce `P2-02` ownership at the HTTP layer
-- the route should return the same generic not-found response for both nonexistent chats and chats owned by another client
-
-What the user will see:
-They can reopen an existing chat from its URL and see the full earlier transcript instead of starting from a blank screen after refresh.
-
 ### P2-05 Multi-Chat Shell And Navigation UX
 
 Priority: P1

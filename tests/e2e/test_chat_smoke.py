@@ -22,9 +22,7 @@ def test_chat_page_load_and_send_flow(page: Page, live_server_url: str) -> None:
 
     expect(page.locator("#chat-form")).to_be_visible()
     expect(page.locator("#message-input")).to_be_visible()
-    expect(page.locator("#chat-box .bot-message").first).to_contain_text(
-        "Hello! How can I help you today?"
-    )
+    expect(page.locator("#chat-box")).to_contain_text("Ask the first question")
 
     page.fill("#message-input", "Hello from smoke test")
     page.click("#chat-form button[type='submit']")

@@ -2,6 +2,15 @@
 
 ## 2026-03-15
 
+### Ship Phase 2 Routes, URLs, And Transcript Rendering
+
+- Added route-backed chat restoration with `/chats/{chat_id}` and redirected `/` into the latest visible chat when the current client already has saved conversations.
+- Added a Phase 2 Chat Start Screen for clients with no visible chats and kept generic not-found behavior for missing or foreign chat URLs.
+- Split the chat shell into reusable server-rendered partials for the chat list, transcript header, and transcript body, with HTMX endpoints for incremental transcript and chat-list refreshes.
+- Updated the send-message flow to push the active chat URL after first-message creation and keep shell state synchronized after success and failure responses.
+- Tightened the Phase 2 shell presentation with compact chat-list rows, lighter header copy, and static-asset cache busting so refreshed UI changes render reliably.
+- Expanded route and Playwright coverage for redirect behavior, transcript reloads, partial rendering, and start-screen flows.
+
 ### Ship Phase 2 Anonymous Client Ownership
 
 - Added anonymous browser-scoped client ID issuance with a stable `HttpOnly` cookie and reused it across requests.

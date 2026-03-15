@@ -1,62 +1,63 @@
-<div class="chat-container flex flex-col h-full">
-    <!-- Messages area - scrollable -->
-    <div id="chat-box" class="flex-1 overflow-y-auto space-y-3 sm:space-y-4 p-3 sm:p-4">
-        <!-- Welcome message -->
-        <div class="message bot-message bg-gray-100 p-3 max-w-[80%] fade-in">
-            <div class="message-content">
-                <p>Hello! How can I help you today?</p>
-                <div class="message-timestamp" id="welcome-timestamp"></div>
-            </div>
-        </div>
-    </div>
+<section class="chat-main-panel flex flex-col min-w-0 min-h-0">
+    {% include "components/chat_view_header.html" %}
 
-    {% if not chat_available %}
-    <div
-        id="chat-service-status"
-        class="chat-status-banner"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-    >
-        <div class="chat-status-title">{{ service_status_title }}</div>
-        <p>{{ service_status_message }}</p>
-    </div>
-    {% endif %}
-    
-    <!-- Input area - fixed at bottom -->
-    <div class="border-t bg-gray-50">
-        <form id="chat-form" hx-post="/send-message-htmx"
-              hx-target="#chat-box"
-              hx-swap="beforeend"
-              data-chat-available="{{ 'true' if chat_available else 'false' }}"
-              data-service-unavailable-message="{{ service_status_message }}"
-              class="flex items-end gap-2 p-2 sm:p-4">
-            <input type="hidden" id="chat-session-id" name="chat_session_id" value="">
-            <textarea
-                   id="message-input"
-                   name="message"
-                   placeholder="Type your message..."
-                   required
-                   rows="1"
-                   {% if not chat_available %}disabled{% endif %}
-                   aria-disabled="{{ 'false' if chat_available else 'true' }}"
-                   class="chat-input flex-1 p-2 sm:p-3 border focus:outline-none focus:ring-1 focus:ring-gray-400 text-sm sm:text-base resize-none overflow-y-auto max-h-[240px]"></textarea>
-            <button id="send-button" type="submit"
-                    {% if not chat_available %}disabled{% endif %}
-                    aria-disabled="{{ 'false' if chat_available else 'true' }}"
-                    class="chat-submit bg-gray-600 text-white px-3 sm:px-4 hover:bg-gray-700 transition-colors flex-shrink-0 text-sm sm:text-base">
-                <span class="hidden sm:inline">Send</span>
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:hidden" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-                </svg>
-            </button>
-        </form>
+    <div class="chat-container flex flex-col h-full min-h-0">
+        <div id="chat-box" class="flex-1 overflow-y-auto space-y-3 sm:space-y-4 p-3 sm:p-4 min-h-0">
+            {% include "components/chat_box_content.html" %}
+        </div>
+
+        {% if not chat_available %}
         <div
-            id="chat-request-status"
-            class="chat-request-status"
+            id="chat-service-status"
+            class="chat-status-banner"
             role="status"
             aria-live="polite"
             aria-atomic="true"
-        ></div>
+        >
+            <div class="chat-status-title">{{ service_status_title }}</div>
+            <p>{{ service_status_message }}</p>
+        </div>
+        {% endif %}
+
+        <div class="border-t bg-gray-50">
+            <form id="chat-form" hx-post="/send-message-htmx"
+                  hx-target="#chat-box"
+                  hx-swap="beforeend"
+                  data-chat-available="{{ 'true' if chat_available else 'false' }}"
+                  data-service-unavailable-message="{{ service_status_message }}"
+                  class="flex items-end gap-2 sm:gap-4 p-2 sm:p-4">
+                <input
+                    type="hidden"
+                    id="chat-session-id"
+                    name="chat_session_id"
+                    value="{{ active_chat_session_id if active_chat_session_id is not none else '' }}"
+                >
+                <textarea
+                       id="message-input"
+                       name="message"
+                       placeholder="Type your message..."
+                       required
+                       rows="1"
+                       {% if not chat_available %}disabled{% endif %}
+                       aria-disabled="{{ 'false' if chat_available else 'true' }}"
+                       class="chat-input flex-1 p-2 sm:p-3 border focus:outline-none focus:ring-1 focus:ring-gray-400 text-sm sm:text-base resize-none overflow-y-auto max-h-[240px]"></textarea>
+                <button id="send-button" type="submit"
+                        {% if not chat_available %}disabled{% endif %}
+                        aria-disabled="{{ 'false' if chat_available else 'true' }}"
+                        class="chat-submit bg-gray-600 text-white px-3 sm:px-4 hover:bg-gray-700 transition-colors flex-shrink-0 text-sm sm:text-base">
+                    <span class="hidden sm:inline">Send</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:hidden" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                    </svg>
+                </button>
+            </form>
+            <div
+                id="chat-request-status"
+                class="chat-request-status"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+            ></div>
+        </div>
     </div>
-</div>
+</section>

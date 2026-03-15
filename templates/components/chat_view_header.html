@@ -1,0 +1,24 @@
+<div
+    id="chat-view-header"
+    class="chat-view-header flex flex-col gap-2 md:flex-row md:items-center md:justify-between border-b border-gray-200 px-5 py-4"
+    {% if oob_swap %}hx-swap-oob="true"{% endif %}
+>
+    {% if view_state == "active" and selected_chat %}
+        <div>
+            <h2 class="chat-view-title text-lg font-bold text-gray-900 m-0">{{ selected_chat.title }}</h2>
+        </div>
+        <div class="chat-view-meta text-sm text-gray-500">{{ format_chat_timestamp(selected_chat.updated_at) }}</div>
+    {% elif view_state == "not_found" %}
+        <div>
+            <div class="chat-view-eyebrow text-xs font-bold uppercase tracking-[0.06em] text-gray-500 mb-1">Unavailable chat</div>
+            <h2 class="chat-view-title text-lg font-bold text-gray-900 m-0">Chat not found</h2>
+        </div>
+        <div class="chat-view-meta text-sm text-gray-500">Use the composer below to start a new chat.</div>
+    {% else %}
+        <div>
+            <div class="chat-view-eyebrow text-xs font-bold uppercase tracking-[0.06em] text-gray-500 mb-1">Chat start screen</div>
+            <h2 class="chat-view-title text-lg font-bold text-gray-900 m-0">Start a new chat</h2>
+        </div>
+        <div class="chat-view-meta text-sm text-gray-500">Your first message creates a saved transcript.</div>
+    {% endif %}
+</div>

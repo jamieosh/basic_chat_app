@@ -5,7 +5,6 @@ class ChatUI {
         this.formId = options.formId || 'chat-form';
         this.messageInputId = options.messageInputId || 'message-input';
         this.submitButtonId = options.submitButtonId || 'send-button';
-        this.welcomeTimestampId = options.welcomeTimestampId || 'welcome-timestamp';
         this.requestStatusId = options.requestStatusId || 'chat-request-status';
         this.requestInFlight = false;
         this.transportErrorHandled = false;
@@ -22,12 +21,6 @@ class ChatUI {
         this.chatAvailable = this.form ? this.form.dataset.chatAvailable !== 'false' : false;
         this.serviceUnavailableMessage = this.form?.dataset.serviceUnavailableMessage
             || 'The chat service is temporarily unavailable. Please try again shortly.';
-
-        // Set welcome message timestamp
-        const welcomeTimestamp = document.getElementById(this.welcomeTimestampId);
-        if (welcomeTimestamp) {
-            welcomeTimestamp.textContent = this.getFormattedTime();
-        }
 
         // Initialize textarea auto-resize
         this.initTextarea();
@@ -230,6 +223,8 @@ class ChatUI {
         const chatBox = this.chatBox;
         if (!chatBox) return;
 
+        this.clearEmptyState();
+
         const currentTime = this.getFormattedTime();
         const userMessageDiv = document.createElement('div');
         userMessageDiv.className = 'message user-message bg-primary-100 p-3 rounded-lg ml-auto max-w-[80%] fade-in';
@@ -281,6 +276,15 @@ class ChatUI {
         messageContentDiv.appendChild(timestampDiv);
         botMessageDiv.appendChild(messageContentDiv);
         chatBox.appendChild(botMessageDiv);
+    }
+
+    clearEmptyState() {
+        const chatBox = this.chatBox;
+        if (!chatBox) return;
+
+        chatBox.querySelectorAll('[data-empty-state="true"]').forEach((element) => {
+            element.remove();
+        });
     }
 
     addTypingIndicator() {

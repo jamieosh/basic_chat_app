@@ -1,0 +1,24 @@
+{% if view_state == "active" %}
+    {% for message in chat_messages %}
+    <div class="message {% if message.role == 'user' %}user-message{% else %}bot-message{% endif %}">
+        <div class="message-content">
+            {% if message.role == "assistant" %}
+            <div class="message-body">{{ format_response_as_html(message.content) | safe }}</div>
+            {% else %}
+            <div class="message-body">{{ format_text_as_html(message.content) | safe }}</div>
+            {% endif %}
+            <div class="message-timestamp">{{ format_chat_timestamp(message.created_at) }}</div>
+        </div>
+    </div>
+    {% endfor %}
+{% elif view_state == "not_found" %}
+    <div class="chat-empty-state rounded-lg border border-dashed border-slate-300 bg-slate-50 px-5 py-5 max-w-2xl" data-empty-state="true">
+        <h3 class="text-base font-bold text-slate-900 m-0">Chat not found</h3>
+        <p class="text-sm leading-6 text-slate-600 mt-2 mb-0">The requested chat could not be found. You can send a message below to start a new chat.</p>
+    </div>
+{% else %}
+    <div class="chat-empty-state rounded-lg border border-dashed border-slate-300 bg-slate-50 px-5 py-5 max-w-2xl" data-empty-state="true">
+        <h3 class="text-base font-bold text-slate-900 m-0">Ask the first question</h3>
+        <p class="text-sm leading-6 text-slate-600 mt-2 mb-0">Conversations in this browser are saved automatically and can be reopened from their URL.</p>
+    </div>
+{% endif %}
