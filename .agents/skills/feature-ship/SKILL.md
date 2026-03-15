@@ -28,9 +28,8 @@ git branch --show-current
    - Add a `### <Feature title>` subsection summarizing the shipped behavior in human-readable terms.
    - Mention the most significant files or commands changed.
    - Include test results if they are available from the verification run.
-6. Update `plans/PHASE 1 BACKLOG.md` to reflect that the item shipped:
-   - Prefer moving the completed item into a `## Completed` section at the bottom.
-   - If creating that section would be too disruptive, clearly mark the backlog item as completed with today's date.
+6. Update `plans/PHASE X DONE.md` to reflect that the item shipped:
+   - Delete the item from `plans/PHASE X BACKLOG.md`
 7. Update `README.md` if the feature changes user-visible behavior, setup, configuration, or contributor workflow.
 8. Delete `plans/<slug>.md` once the feature plan is fully complete so the merge removes the finished plan file from the repository.
 9. Run the final gates:

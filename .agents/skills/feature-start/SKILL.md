@@ -1,6 +1,6 @@
 ---
 name: feature-start
-description: Use when the user wants to start and plan a new feature in this repository without writing implementation code yet. This skill selects a backlog item, refines scope, inspects the codebase, creates a `codex/<slug>` branch, and writes `plans/<slug>.md`.
+description: Use when the user wants to start and plan a new feature/phase in this repository without writing implementation code yet. This skill selects a backlog item, refines scope, inspects the codebase, creates a `codex/<slug>` branch, and writes `plans/<slug>.md`.
 ---
 
 # Feature Start
@@ -9,7 +9,7 @@ Use this skill for planning only. Do not write implementation code.
 
 ## Workflow
 
-1. Read `plans/PHASE 1 BACKLOG.md`.
+1. Read `plans/PHASE X BACKLOG.md`.
 2. Pick the feature:
    - If the user named a feature, match it against the backlog and resolve ambiguity before continuing.
    - If no feature was named, present the top 5 active backlog items as a numbered menu and ask the user to choose one.
@@ -67,7 +67,7 @@ git switch -c codex/<slug>
 - [ ] `uv run python -m pytest` passes
 - [ ] `README.md` updated if user-visible behavior changed
 - [ ] `CHANGELOG.md` updated if the feature ships
-- [ ] `plans/PHASE 1 BACKLOG.md` updated when the feature ships
+- [ ] `plans/PHASE X BACKLOG.md` updated when the feature ships
 ```
 
 9. Confirm the plan file path and stop. Tell the user to run `$feature-build` when ready.
