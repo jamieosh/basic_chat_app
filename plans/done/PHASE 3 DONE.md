@@ -4,6 +4,28 @@ Completed Phase 3 backlog items move here once they are shipped.
 
 ## Completed Items
 
+### P3-08 Test, Docs, And Forking Guidance Alignment
+
+Priority: P1
+
+Delivered:
+
+- added explicit harness-boundary regression coverage in `tests/test_chat_harness_contract.py`, `tests/test_harness_registry.py`, `tests/test_chat_turn_service.py`, `tests/test_main_routes.py`, `tests/test_diagnostics.py`, and `tests/test_openai_agent.py` so registry resolution, fake-harness startup wiring, non-default readiness metadata, and OpenAI `run()`/`run_events()` parity are now locked behind the same normalized harness contract
+- added a fake event-harness fixture in `tests/conftest.py` so startup wiring and the normal HTMX send flow can be exercised through a non-OpenAI default harness without route-level provider coupling
+- updated `README.md` and `AGENTS.md` so contributors can follow one registry-backed path for adding a new harness implementation while treating `agents/openai_agent.py` as the shipped default adapter rather than the mandatory template for every future harness
+- updated `plans/PHASE 3 BACKLOG.md`, `plans/PHASE 3 DESIGN.md`, and `plans/PHASES.md` so the active planning docs now describe the same UI-layer, harness-layer, and small control/service-layer split as the contributor-facing docs
+
+Acceptance criteria met:
+
+- contributors can follow one obvious path to add a new provider-backed harness
+- Phase 3 terminology is consistent across code and docs
+- `README.md` and `AGENTS.md` describe the same extension model as the Phase 3 planning docs
+- the updated docs describe the UI layer, harness layer, and small control/service layer consistently
+- tests lock the default harness behavior while leaving space for alternate implementations
+
+What the user sees:
+No direct product change, but the repository is now easier to understand, extend, and fork safely.
+
 ### P3-07 Control-Layer Refactor, Error-Handling, And Harness Observability
 
 Priority: P1
