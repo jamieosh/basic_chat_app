@@ -1,4 +1,9 @@
-from agents.chat_harness import ChatHarnessIdentity, ChatHarnessRequest, ChatHarnessResult
+from agents.chat_harness import (
+    ChatHarnessIdentity,
+    ChatHarnessRequest,
+    ChatHarnessResult,
+    ConversationTurn,
+)
 from agents.harness_registry import HarnessRegistry, HarnessResolutionError
 from persistence import ChatRepository, bootstrap_database
 from services import ChatTurnService, failure_presentation
@@ -90,6 +95,48 @@ def test_chat_turn_service_uses_registry_default_binding_for_new_chat(tmp_path):
     assert start_result.chat_session is not None
     assert start_result.chat_session.harness_key == "fake-default"
     assert service.resolve_harness_for_turn_state(start_result.turn_request_state).identity.key == "fake-default"
+
+
+def test_chat_turn_service_builds_harness_request_from_canonical_prior_messages(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    service = ChatTurnService(repository)
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+    repository.create_message(
+        chat_session_id=chat.id,
+        client_id="client-a",
+        role="user",
+        content="First question",
+    )
+    repository.create_message(
+        chat_session_id=chat.id,
+        client_id="client-a",
+        role="assistant",
+        content="First answer",
+    )
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-build-harness",
+        chat_session_id=chat.id,
+        message="What next?",
+    )
+
+    harness_request = service.build_harness_request(
+        client_id="client-a",
+        request_id="request-build-harness",
+        start_result=start_result,
+        message="What next?",
+    )
+
+    assert harness_request.message == "What next?"
+    assert harness_request.chat_session_id == chat.id
+    assert harness_request.client_id == "client-a"
+    assert harness_request.conversation_history == (
+        ConversationTurn(role="user", content="First question"),
+        ConversationTurn(role="assistant", content="First answer"),
+    )
 
 
 def test_chat_turn_service_finalize_failure_keeps_user_turn_and_marks_request_failed(tmp_path):

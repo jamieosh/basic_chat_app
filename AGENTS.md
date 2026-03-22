@@ -26,6 +26,7 @@ Current stage:
 - Supports chat delete while keeping archive backend-only in Phase 2
 - Executes chat requests through the `ChatHarness` contract, a startup-wired `HarnessRegistry`, and a shipped OpenAI-backed default harness adapter (`gpt-5-mini`)
 - Persists a stable harness key and optional harness version on each chat session
+- Lets harness-owned context builders assemble model-facing prompt and transcript context from the persisted raw conversation record
 - Formats text/code-block output into HTML
 - Returns inline bot message HTML for HTMX insertion
 - Exposes a basic health check at `/health`
@@ -39,11 +40,12 @@ Current stage:
   - Full page routes, HTMX partial routes, send lifecycle, readiness wiring, and response/error rendering
 - `agents/`
   - `base_agent.py`: legacy compatibility shim and harness re-export
-  - `chat_harness.py`: app-facing `ChatHarness` contract plus normalized request/result/event/failure types
+  - `chat_harness.py`: app-facing `ChatHarness` contract plus normalized request/result/event/failure/context types
+  - `context_builders.py`: harness-owned context-builder vocabulary and the shipped default transcript-based builder
   - `harness_registry.py`: startup-time harness construction plus stable binding resolution
-  - `openai_agent.py`: default OpenAI-backed harness adapter with provider-specific request construction and error normalization
+  - `openai_agent.py`: default OpenAI-backed harness adapter with provider-specific request construction, default context assembly, and error normalization
 - `services/`
-  - `chat_turns.py`: small control/service layer for turn-request lifecycle, harness resolution, failure presentation, and idempotent replay coordination
+  - `chat_turns.py`: small control/service layer for turn-request lifecycle, harness resolution, harness-request construction, failure presentation, and idempotent replay coordination
 - `persistence/`
   - `db.py`: SQLite bootstrap and additive schema/backfill for persisted harness binding columns
   - `repository.py`: chat, message, persisted harness binding, and turn-request persistence helpers
@@ -107,6 +109,9 @@ Current stage:
 - New chats are created with the default configured harness binding and keep that binding for their lifetime.
 - Prompting is template-driven:
   - System prompt and optional context prompt are loaded from `templates/prompts/openai/`.
+- The harness layer now owns prompt assembly and context/memory shaping:
+  - routes persist and supply the canonical raw transcript
+  - harness-owned context builders turn that transcript into model-facing context
 - UI stays server-rendered and HTMX-first rather than introducing SPA-owned chat state.
 
 ## Known Gaps (Important)
@@ -121,6 +126,7 @@ Current stage:
   - `/send-message-htmx` should return a message HTML snippet for append.
 - Keep the route-backed restore behavior and hidden `chat_session_id` wiring intact when editing the shell.
 - Keep provider-specific logic behind `agents/chat_harness.py` interfaces rather than reintroducing it into route handlers.
+- Keep prompt assembly and memory/context shaping behind harness-owned context builders rather than in routes.
 - Keep default harness selection and binding resolution behind `agents/harness_registry.py` and the small service/control layer rather than in routes.
 - Prefer native `run()` implementations for provider-backed harnesses; keep `BaseAgent` and `process_message()` only as compatibility shims for older agent code.
 - If you update model behavior, keep prompt templates, settings defaults, harness registry defaults, and persisted binding expectations in sync.

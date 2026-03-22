@@ -4,6 +4,28 @@ Completed Phase 3 backlog items move here once they are shipped.
 
 ## Completed Items
 
+### P3-04 Context Builders And Harness-Owned Memory Assembly
+
+Priority: P1
+
+Delivered:
+
+- added normalized model-facing context types plus pluggable context-builder hooks in `agents/chat_harness.py` and `agents/context_builders.py`, while keeping the persisted transcript as the canonical raw conversation record
+- refactored `agents/openai_agent.py` so the shipped OpenAI path assembles system prompt, optional user-context prompt, and prior transcript history through a default harness-owned context builder instead of inline provider-message shaping
+- extended `utils/prompt_manager.py` with an optional context-prompt lookup path so harnesses can treat context augmentation as part of execution without forcing every prompt set to ship a user-context template
+- moved transcript-to-harness request shaping out of `main.py` and into `services/chat_turns.py` plus `persistence/repository.py`, so the route remains responsible for request lifecycle and rendering while the harness boundary owns memory assembly
+- added regression coverage in `tests/test_context_builders.py`, `tests/test_openai_agent.py`, `tests/test_chat_harness_contract.py`, `tests/test_chat_turn_service.py`, `tests/test_main_routes.py`, and `tests/test_prompt_manager.py` to lock default parity and prove alternate memory policies can be introduced behind the harness seam
+- updated contributor-facing docs so `README.md` and `AGENTS.md` describe context builders, harness-owned prompt assembly, and the current extension path consistently
+
+Acceptance criteria met:
+
+- the harness can assemble model-facing context without route changes
+- the default path preserves current multi-turn continuity semantics
+- future memory experiments can be added behind the harness boundary instead of in web handlers
+
+What the user sees:
+No major visible UI change, but the app now has a clean harness-owned place for future memory, summarization, and context experiments.
+
 ### P3-03 OpenAI Harness Adapter Migration
 
 Priority: P0

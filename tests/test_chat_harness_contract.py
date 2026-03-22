@@ -3,12 +3,15 @@ from dataclasses import asdict
 
 from agents.base_agent import (
     BaseAgent,
+    ChatContextBuilder,
+    ChatHarnessContext,
     ChatHarnessCapabilities,
     ChatHarnessFailure,
     ChatHarnessIdentity,
     ChatHarnessObservability,
     ChatHarnessRequest,
     ChatHarnessResult,
+    ContextMessage,
     ConversationTurn,
 )
 
@@ -29,6 +32,17 @@ class FakeHarness(BaseAgent):
     def process_message(self, message: str, conversation_history=None) -> str:
         history_size = len(conversation_history or ())
         return f"{message} ({history_size})"
+
+
+class FakeContextBuilder:
+    def build(self, request: ChatHarnessRequest) -> ChatHarnessContext:
+        return ChatHarnessContext(
+            messages=(
+                ContextMessage(role="system", content="Follow the house style."),
+                ContextMessage(role="user", content=request.message),
+            ),
+            metadata={"builder": "fake"},
+        )
 
 
 def test_chat_harness_models_are_json_serializable():
@@ -72,6 +86,15 @@ def test_chat_harness_models_are_json_serializable():
             )
         ),
         "request": asdict(request),
+        "context": asdict(
+            ChatHarnessContext(
+                messages=[
+                    ContextMessage(role="system", content="Rules"),
+                    ContextMessage(role="user", content="Hello"),
+                ],
+                metadata={"builder": "default"},
+            )
+        ),
         "result": asdict(result),
     }
 
@@ -80,8 +103,31 @@ def test_chat_harness_models_are_json_serializable():
 
     assert decoded["identity"]["key"] == "fake"
     assert decoded["request"]["conversation_history"][0]["role"] == "user"
+    assert decoded["context"]["messages"][0]["role"] == "system"
     assert decoded["result"]["failure"]["code"] == "provider_error"
     assert decoded["result"]["observability"]["request_id"] == "req-123"
+
+
+def test_chat_harness_request_exposes_transcript_alias_for_conversation_history():
+    request = ChatHarnessRequest(
+        message="Hello",
+        conversation_history=[ConversationTurn(role="user", content="Hi")],
+    )
+
+    assert request.transcript == request.conversation_history
+    assert request.transcript == (ConversationTurn(role="user", content="Hi"),)
+
+
+def test_context_builder_protocol_builds_model_facing_context():
+    builder: ChatContextBuilder = FakeContextBuilder()
+
+    context = builder.build(ChatHarnessRequest(message="Hello"))
+
+    assert context.messages == (
+        ContextMessage(role="system", content="Follow the house style."),
+        ContextMessage(role="user", content="Hello"),
+    )
+    assert context.metadata == {"builder": "fake"}
 
 
 def test_base_agent_run_adapts_legacy_process_message_to_harness_result():

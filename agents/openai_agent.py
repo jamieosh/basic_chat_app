@@ -12,6 +12,9 @@ from openai.types.chat import (
 
 from .base_agent import (
     BaseAgent,
+    ChatContextBuilder,
+    ChatHarnessCapabilities,
+    ChatHarnessContext,
     ChatHarnessExecutionError,
     ChatHarnessFailure,
     ChatHarnessIdentity,
@@ -20,6 +23,7 @@ from .base_agent import (
     ChatHarnessResult,
     ConversationTurn,
 )
+from .context_builders import DefaultContextBuilder
 from utils.logging_config import get_logger
 from utils.prompt_manager import PromptTemplateManager
 
@@ -109,9 +113,28 @@ class OpenAIAgent(BaseAgent):
             provider_name="openai",
         )
 
+    @property
+    def capabilities(self) -> ChatHarnessCapabilities:
+        return ChatHarnessCapabilities(supports_context_builders=True)
+
+    @property
+    def context_builder(self) -> ChatContextBuilder:
+        system_prompt = self.prompt_manager.get_system_prompt(
+            self.prompt_name, **self.system_template_vars
+        )
+        user_context = self.prompt_manager.get_optional_context_prompt(
+            self.prompt_name, **self.context_template_vars
+        )
+        return DefaultContextBuilder(
+            system_prompt=system_prompt,
+            user_context=user_context,
+            builder_name="openai_default",
+        )
+
     def run(self, request: ChatHarnessRequest) -> ChatHarnessResult:
         try:
-            response_text = self._run_openai_request(request)
+            context = self._build_context(request)
+            response_text = self._run_openai_request(request, context)
         except ValueError:
             raise
         except Exception as exc:
@@ -124,10 +147,12 @@ class OpenAIAgent(BaseAgent):
                 request_id=request.request_id,
                 tags={
                     "harness_key": self.identity.key,
+                    "context_builder": context.metadata.get("builder", "unknown"),
                     "prompt_name": self.prompt_name,
                 },
             ),
             metadata={
+                "context_builder": context.metadata.get("builder", "unknown"),
                 "model_display_name": self.model_display_name,
                 "prompt_name": self.prompt_name,
             },
@@ -207,20 +232,25 @@ class OpenAIAgent(BaseAgent):
             openai.AuthenticationError: When API key is invalid
             Exception: For other unexpected errors
         """
+        request = ChatHarnessRequest(
+            message=message,
+            conversation_history=tuple(conversation_history or ()),
+        )
         return self._run_openai_request(
-            ChatHarnessRequest(
-                message=message,
-                conversation_history=tuple(conversation_history or ()),
-            )
+            request,
+            self._build_context(request),
         )
 
-    def _run_openai_request(self, request: ChatHarnessRequest) -> str:
+    def _build_context(self, request: ChatHarnessRequest) -> ChatHarnessContext:
+        return self.context_builder.build(request)
+
+    def _run_openai_request(self, request: ChatHarnessRequest, context: ChatHarnessContext) -> str:
         if not request.message or not request.message.strip():
             self.logger.error("Empty message received")
             raise ValueError("Message cannot be empty")
 
         try:
-            messages = self._build_messages(request)
+            messages = self._build_messages(context)
             self.logger.debug("openai_agent.prompt_selected prompt=%s", self.prompt_name)
 
             try:
@@ -272,33 +302,20 @@ class OpenAIAgent(BaseAgent):
             self.logger.critical("openai_agent.prompt_template_error detail=%s", str(e))
             raise
 
-    def _build_messages(self, request: ChatHarnessRequest) -> list[ChatCompletionMessageParam]:
-        system_content = self.prompt_manager.get_system_prompt(
-            self.prompt_name, **self.system_template_vars
-        )
-        user_content = self._render_user_content(request.message)
-
-        messages: list[ChatCompletionMessageParam] = [
-            ChatCompletionSystemMessageParam(role="system", content=system_content)
-        ]
-        for turn in request.conversation_history:
-            if turn.role == "user":
-                messages.append(ChatCompletionUserMessageParam(role="user", content=turn.content))
+    def _build_messages(self, context: ChatHarnessContext) -> list[ChatCompletionMessageParam]:
+        messages: list[ChatCompletionMessageParam] = []
+        for message in context.messages:
+            if message.role == "system":
+                messages.append(
+                    ChatCompletionSystemMessageParam(role="system", content=message.content)
+                )
+            elif message.role == "user":
+                messages.append(ChatCompletionUserMessageParam(role="user", content=message.content))
             else:
                 messages.append(
-                    ChatCompletionAssistantMessageParam(role="assistant", content=turn.content)
+                    ChatCompletionAssistantMessageParam(role="assistant", content=message.content)
                 )
-        messages.append(ChatCompletionUserMessageParam(role="user", content=user_content))
         return messages
-
-    def _render_user_content(self, message: str) -> str:
-        try:
-            context_content = self.prompt_manager.get_context_prompt(
-                self.prompt_name, **self.context_template_vars
-            ).strip()
-        except FileNotFoundError:
-            return message
-        return f"{context_content}\n\n{message}" if context_content else message
 
     def _extract_response_text(self, response) -> str:
         choices = getattr(response, "choices", None)

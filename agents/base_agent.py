@@ -1,5 +1,6 @@
 from .chat_harness import (
     BaseAgent,
+    ChatHarnessContext,
     ChatHarness,
     ChatHarnessCapabilities,
     ChatHarnessExecutionError,
@@ -9,12 +10,16 @@ from .chat_harness import (
     ChatHarnessObservability,
     ChatHarnessRequest,
     ChatHarnessResult,
+    ContextMessage,
     ConversationTurn,
 )
+from .context_builders import ChatContextBuilder
 
 __all__ = [
     "BaseAgent",
+    "ChatContextBuilder",
     "ChatHarness",
+    "ChatHarnessContext",
     "ChatHarnessCapabilities",
     "ChatHarnessExecutionError",
     "ChatHarnessEvent",
@@ -23,5 +28,6 @@ __all__ = [
     "ChatHarnessObservability",
     "ChatHarnessRequest",
     "ChatHarnessResult",
+    "ContextMessage",
     "ConversationTurn",
 ]

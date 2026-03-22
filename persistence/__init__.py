@@ -6,6 +6,7 @@ from persistence.repository import (
     ChatTurnRequest,
     ChatTurnRequestState,
     StartTurnRequestResult,
+    conversation_turns_from_messages,
 )
 
 __all__ = [
@@ -15,6 +16,7 @@ __all__ = [
     "ChatTurnRequest",
     "ChatTurnRequestState",
     "StartTurnRequestResult",
+    "conversation_turns_from_messages",
     "StorageInitializationError",
     "bootstrap_database",
 ]

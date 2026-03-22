@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from textwrap import dedent
-from typing import Literal, cast
+from typing import cast
 from uuid import uuid4
 
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -17,8 +17,6 @@ from fastapi.templating import Jinja2Templates
 from agents.base_agent import (
     ChatHarness,
     ChatHarnessExecutionError,
-    ChatHarnessRequest,
-    ConversationTurn,
 )
 from agents.harness_registry import (
     HarnessRegistry,
@@ -268,20 +266,6 @@ def _finalize_response_with_client_cookie(
     if should_set_cookie:
         set_client_id_cookie(response, client_id)
     return response
-
-
-def _conversation_history_from_messages(messages: list[ChatMessage]) -> list[ConversationTurn]:
-    history: list[ConversationTurn] = []
-    for message in messages:
-        if message.role not in {"user", "assistant"}:
-            raise ValueError(f"Unsupported persisted role for conversation history: {message.role}")
-        history.append(
-            ConversationTurn(
-                role=cast(Literal["user", "assistant"], message.role),
-                content=message.content,
-            )
-        )
-    return history
 
 
 def _format_text_as_html(text: str) -> str:
@@ -1109,18 +1093,16 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 client_id,
                 resolved_request_id,
             )
+            harness_request = chat_turn_service.build_harness_request(
+                client_id=client_id,
+                request_id=resolved_request_id,
+                start_result=start_result,
+                message=message,
+            )
 
             harness_result = await asyncio.to_thread(
                 chat_harness.run,
-                ChatHarnessRequest(
-                    message=message,
-                    conversation_history=tuple(
-                        _conversation_history_from_messages(start_result.prior_messages)
-                    ),
-                    request_id=resolved_request_id,
-                    chat_session_id=active_chat_session_id,
-                    client_id=client_id,
-                ),
+                harness_request,
             )
             response = cast(str, harness_result.output_text)
             turn_request_state = await asyncio.to_thread(

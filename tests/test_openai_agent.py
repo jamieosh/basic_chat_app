@@ -4,7 +4,13 @@ import httpx
 import openai
 import pytest
 
-from agents.base_agent import ChatHarnessExecutionError, ChatHarnessRequest, ConversationTurn
+from agents.base_agent import (
+    ChatHarnessContext,
+    ChatHarnessExecutionError,
+    ChatHarnessRequest,
+    ContextMessage,
+    ConversationTurn,
+)
 from agents.openai_agent import OpenAIAgent
 
 
@@ -62,6 +68,12 @@ def test_identity_exposes_openai_harness_metadata():
     assert agent.identity.provider_name == "openai"
     assert agent.identity.display_name == "AI Chat"
     assert agent.identity.model_display_name == "GPT-5 Mini"
+
+
+def test_capabilities_report_context_builder_support():
+    agent = OpenAIAgent(api_key="test-key")
+
+    assert agent.capabilities.supports_context_builders is True
 
 
 def test_run_uses_configured_prompt_name_temperature_and_timeout(tmp_path):
@@ -123,6 +135,47 @@ def test_run_returns_chat_harness_result_with_openai_observability():
     assert result.observability.request_id == "req-123"
     assert result.observability.tags["harness_key"] == "openai"
     assert result.metadata["model_display_name"] == "GPT-5 Mini"
+
+
+def test_run_uses_builder_generated_context_and_records_builder_metadata():
+    agent = OpenAIAgent(api_key="test-key")
+    captured = {}
+
+    def fake_create(**kwargs):
+        captured.update(kwargs)
+        return types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="Builder reply"))]
+        )
+
+    agent.client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=fake_create)
+        )
+    )
+    agent._build_context = lambda _request: ChatHarnessContext(  # type: ignore[method-assign]
+        messages=(
+            ContextMessage(role="system", content="System rules"),
+            ContextMessage(role="assistant", content="Prior reply"),
+            ContextMessage(role="user", content="Built user message"),
+        ),
+        metadata={"builder": "test-builder"},
+    )
+
+    result = agent.run(ChatHarnessRequest(message="Hello there"))
+
+    assert result.output_text == "Builder reply"
+    assert result.metadata["context_builder"] == "test-builder"
+    assert result.observability.tags["context_builder"] == "test-builder"
+    assert [message["role"] for message in captured["messages"]] == [
+        "system",
+        "assistant",
+        "user",
+    ]
+    assert [message["content"] for message in captured["messages"]] == [
+        "System rules",
+        "Prior reply",
+        "Built user message",
+    ]
 
 
 def test_run_omits_custom_temperature_for_gpt5_models():
@@ -235,6 +288,33 @@ def test_run_includes_prior_history_before_latest_user_turn():
         "First answer",
         "What next?",
     ]
+
+
+def test_context_builder_preserves_default_prompt_and_transcript_order():
+    agent = OpenAIAgent(api_key="test-key")
+
+    context = agent.context_builder.build(
+        ChatHarnessRequest(
+            message="What next?",
+            conversation_history=[
+                ConversationTurn(role="user", content="First question"),
+                ConversationTurn(role="assistant", content="First answer"),
+            ],
+        )
+    )
+
+    assert [message.role for message in context.messages] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert context.messages[1:] == (
+        ContextMessage(role="user", content="First question"),
+        ContextMessage(role="assistant", content="First answer"),
+        ContextMessage(role="user", content="What next?"),
+    )
+    assert context.metadata == {"builder": "openai_default"}
 
 
 def test_default_context_prompt_is_empty_for_neutral_baseline():

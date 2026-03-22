@@ -5,7 +5,9 @@ from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
+
+from agents.chat_harness import ConversationTurn
 
 from persistence.db import DEFAULT_CHAT_HARNESS_KEY, connect_database
 
@@ -560,6 +562,20 @@ def _load_messages_for_chat_rows(
         (chat_session_id,),
     ).fetchall()
     return [_row_to_chat_message(row) for row in rows]
+
+
+def conversation_turns_from_messages(messages: list[ChatMessage]) -> tuple[ConversationTurn, ...]:
+    history: list[ConversationTurn] = []
+    for message in messages:
+        if message.role not in {"user", "assistant"}:
+            raise ValueError(f"Unsupported persisted role for conversation history: {message.role}")
+        history.append(
+            ConversationTurn(
+                role=cast(Literal["user", "assistant"], message.role),
+                content=message.content,
+            )
+        )
+    return tuple(history)
 
 
 def _insert_chat_row(

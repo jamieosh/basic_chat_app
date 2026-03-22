@@ -3,9 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from agents.harness_registry import HarnessRegistry, HarnessResolutionError
-from agents.chat_harness import ChatHarness
+from agents.chat_harness import ChatHarness, ChatHarnessRequest
 from persistence.db import DEFAULT_CHAT_HARNESS_KEY
-from persistence.repository import ChatRepository, ChatSession, ChatTurnRequestState, StartTurnRequestResult
+from persistence.repository import (
+    ChatRepository,
+    ChatSession,
+    ChatTurnRequestState,
+    StartTurnRequestResult,
+    conversation_turns_from_messages,
+)
 
 
 @dataclass(frozen=True)
@@ -152,6 +158,23 @@ class ChatTurnService:
 
     def get_turn_state(self, *, client_id: str, request_id: str) -> ChatTurnRequestState | None:
         return self._repository.get_turn_request_state(client_id=client_id, request_id=request_id)
+
+    def build_harness_request(
+        self,
+        *,
+        client_id: str,
+        request_id: str,
+        start_result: StartTurnRequestResult,
+        message: str,
+    ) -> ChatHarnessRequest:
+        chat_session_id = None if start_result.chat_session is None else start_result.chat_session.id
+        return ChatHarnessRequest(
+            message=message,
+            conversation_history=conversation_turns_from_messages(start_result.prior_messages),
+            request_id=request_id,
+            chat_session_id=chat_session_id,
+            client_id=client_id,
+        )
 
     def complete_turn(
         self,

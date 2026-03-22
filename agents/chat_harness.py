@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from collections.abc import Iterator, Sequence
+
+if TYPE_CHECKING:
+    from .context_builders import ChatContextBuilder
 
 
 FailureCode = Literal[
@@ -18,12 +21,29 @@ FailureCode = Literal[
 ]
 
 EventType = Literal["output_text", "completed", "failed"]
+ContextMessageRole = Literal["system", "user", "assistant"]
 
 
 @dataclass(frozen=True)
 class ConversationTurn:
     role: Literal["user", "assistant"]
     content: str
+
+
+@dataclass(frozen=True)
+class ContextMessage:
+    role: ContextMessageRole
+    content: str
+
+
+@dataclass(frozen=True)
+class ChatHarnessContext:
+    messages: tuple[ContextMessage, ...] = ()
+    metadata: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "messages", tuple(self.messages))
+        object.__setattr__(self, "metadata", dict(self.metadata))
 
 
 @dataclass(frozen=True)
@@ -70,6 +90,10 @@ class ChatHarnessRequest:
     def __post_init__(self) -> None:
         object.__setattr__(self, "conversation_history", tuple(self.conversation_history))
         object.__setattr__(self, "metadata", dict(self.metadata))
+
+    @property
+    def transcript(self) -> tuple[ConversationTurn, ...]:
+        return self.conversation_history
 
 
 @dataclass(frozen=True)
@@ -120,6 +144,10 @@ class ChatHarness(ABC):
     @property
     def capabilities(self) -> ChatHarnessCapabilities:
         return ChatHarnessCapabilities()
+
+    @property
+    def context_builder(self) -> "ChatContextBuilder | None":
+        return None
 
     @abstractmethod
     def run(self, request: ChatHarnessRequest) -> ChatHarnessResult:

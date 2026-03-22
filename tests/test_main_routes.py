@@ -13,6 +13,7 @@ from agents.base_agent import (
     ChatHarnessExecutionError,
     ChatHarnessFailure,
     ChatHarnessIdentity,
+    ChatHarnessRequest,
     ConversationTurn,
 )
 from agents.harness_registry import HarnessRegistry
@@ -440,6 +441,40 @@ def test_send_message_passes_prior_transcript_to_agent_in_order(client, monkeypa
         ConversationTurn(role="user", content="First"),
         ConversationTurn(role="assistant", content="Reply"),
     ]
+
+
+def test_send_message_delegates_harness_request_construction_to_turn_service(client, monkeypatch):
+    captured = {}
+
+    def fake_build_harness_request(*, client_id, request_id, start_result, message):
+        captured["client_id"] = client_id
+        captured["request_id"] = request_id
+        captured["message"] = message
+        captured["prior_messages"] = list(start_result.prior_messages)
+        return ChatHarnessRequest(
+            message=message,
+            request_id=request_id,
+            client_id=client_id,
+            chat_session_id=None if start_result.chat_session is None else start_result.chat_session.id,
+        )
+
+    monkeypatch.setattr(
+        client.app.state.chat_turn_service,
+        "build_harness_request",
+        fake_build_harness_request,
+    )
+    monkeypatch.setattr(
+        client.app.state.chat_harness,
+        "run",
+        lambda request: types.SimpleNamespace(output_text=f"reply:{request.message}"),
+    )
+
+    response = _send_message(client, {"message": "Hi"})
+
+    assert response.status_code == 200
+    assert captured["message"] == "Hi"
+    assert captured["prior_messages"] == []
+    assert "reply:Hi" in response.text
 
 
 def test_send_message_returns_generic_not_found_for_missing_or_foreign_chat(client, monkeypatch):
