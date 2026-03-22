@@ -300,6 +300,146 @@ def test_chat_turn_service_execute_harness_request_raises_on_failed_event_after_
     assert exc_info.value.failure.detail == "ignored"
 
 
+def test_chat_turn_service_execute_started_turn_succeeds_with_normalized_observability(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    registry = HarnessRegistry({"fake-default": FakeHarness("fake-default")}, default_key="fake-default")
+    service = ChatTurnService(repository, registry)
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-execute-success",
+        chat_session_id=None,
+        message="Hello",
+    )
+
+    execution_result = service.execute_started_turn(
+        client_id="client-a",
+        request_id="request-execute-success",
+        start_result=start_result,
+        message="Hello",
+    )
+
+    assert execution_result.outcome == "succeeded"
+    assert execution_result.output_text == "fake-default:Hello"
+    assert execution_result.failure_presentation is None
+    assert execution_result.response_harness.identity.key == "fake-default"
+    assert execution_result.turn_request_state.turn_request.status == "completed"
+    assert execution_result.observability.harness_key == "fake-default"
+    assert execution_result.observability.request_id == "request-execute-success"
+    assert execution_result.observability.failure_code is None
+
+
+def test_chat_turn_service_execute_started_turn_finalizes_normalized_harness_failure(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+
+    class FailingHarness(FakeHarness):
+        def run_events(self, request: ChatHarnessRequest):
+            raise ChatHarnessExecutionError(
+                ChatHarnessFailure(
+                    code="rate_limited",
+                    message="busy",
+                    retryable=True,
+                    detail=request.message,
+                )
+            )
+
+    registry = HarnessRegistry({"openai": FailingHarness("openai")}, default_key="openai")
+    service = ChatTurnService(repository, registry)
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-execute-failure",
+        chat_session_id=None,
+        message="Hello",
+    )
+    execution_result = service.execute_started_turn(
+        client_id="client-a",
+        request_id="request-execute-failure",
+        start_result=start_result,
+        message="Hello",
+    )
+
+    assert execution_result.outcome == "failed"
+    assert execution_result.output_text is None
+    assert execution_result.failure_presentation is not None
+    assert execution_result.failure_presentation.title == "Rate Limit Exceeded"
+    assert execution_result.response_harness.identity.key == "openai"
+    assert execution_result.turn_request_state.turn_request.status == "failed"
+    assert execution_result.turn_request_state.turn_request.failure_code == "rate_limited"
+    assert execution_result.observability.harness_key == "openai"
+    assert execution_result.observability.failure_code == "rate_limited"
+
+
+def test_chat_turn_service_execute_started_turn_finalizes_unknown_binding_as_harness_unavailable(
+    tmp_path,
+):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    registry = HarnessRegistry({"openai": FakeHarness("openai")}, default_key="openai")
+    service = ChatTurnService(repository, registry)
+    chat = repository.create_chat(client_id="client-a", title="Chat 1", harness_key="missing")
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-missing-binding-finalized",
+        chat_session_id=chat.id,
+        message="Hello",
+    )
+    execution_result = service.execute_started_turn(
+        client_id="client-a",
+        request_id="request-missing-binding-finalized",
+        start_result=start_result,
+        message="Hello",
+    )
+
+    assert execution_result.outcome == "failed"
+    assert execution_result.response_harness.identity.key == "openai"
+    assert execution_result.failure_presentation is not None
+    assert execution_result.failure_presentation.title == "Service Unavailable"
+    assert execution_result.turn_request_state.turn_request.status == "failed"
+    assert execution_result.turn_request_state.turn_request.failure_code == "harness_unavailable"
+    assert execution_result.observability.harness_key == "missing"
+    assert execution_result.observability.failure_code == "harness_unavailable"
+
+
+def test_chat_turn_service_execute_started_turn_finalizes_unexpected_error(tmp_path, monkeypatch):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    registry = HarnessRegistry({"openai": FakeHarness("openai")}, default_key="openai")
+    service = ChatTurnService(repository, registry)
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-execute-unexpected",
+        chat_session_id=None,
+        message="Hello",
+    )
+
+    def raise_runtime_error(*, harness, harness_request):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(service, "execute_harness_request", raise_runtime_error)
+    execution_result = service.execute_started_turn(
+        client_id="client-a",
+        request_id="request-execute-unexpected",
+        start_result=start_result,
+        message="Hello",
+    )
+
+    assert execution_result.outcome == "failed"
+    assert execution_result.response_harness.identity.key == "openai"
+    assert execution_result.failure_presentation is not None
+    assert execution_result.failure_presentation.title == "Unexpected Error"
+    assert execution_result.turn_request_state.turn_request.status == "failed"
+    assert execution_result.turn_request_state.turn_request.failure_code == "unexpected_error"
+    assert execution_result.observability.failure_code == "unexpected_error"
+
+
 def test_chat_turn_service_replays_duplicate_processing_request_state(tmp_path):
     db_path = tmp_path / "chat.db"
     bootstrap_database(db_path)
