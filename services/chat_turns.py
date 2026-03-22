@@ -74,24 +74,6 @@ FAILURE_PRESENTATIONS = {
         status_code=409,
         log_event="chat.lifecycle_conflict",
     ),
-    "bad_request": FailurePresentation(
-        title="AI Service Error",
-        body="The AI service rejected the request. Please try again later.",
-        status_code=502,
-        log_event="chat.invalid_request",
-    ),
-    "api_error": FailurePresentation(
-        title="AI Service Error",
-        body="The AI service encountered an error. Please try again later.",
-        status_code=500,
-        log_event="chat.provider_error",
-    ),
-    "empty_model_response": FailurePresentation(
-        title="AI Service Error",
-        body="The AI service returned an empty response. Please try again later.",
-        status_code=502,
-        log_event="chat.empty_response",
-    ),
     "harness_unavailable": FailurePresentation(
         title="Service Unavailable",
         body="The configured chat harness is not available. Please try again later.",
@@ -100,11 +82,18 @@ FAILURE_PRESENTATIONS = {
     ),
 }
 
+LEGACY_FAILURE_CODE_ALIASES = {
+    "bad_request": "invalid_request",
+    "api_error": "provider_error",
+    "empty_model_response": "empty_response",
+}
+
 
 def failure_presentation(code: str) -> FailurePresentation:
-    if code not in FAILURE_PRESENTATIONS:
+    normalized_code = LEGACY_FAILURE_CODE_ALIASES.get(code, code)
+    if normalized_code not in FAILURE_PRESENTATIONS:
         return FAILURE_PRESENTATIONS["unexpected_error"]
-    return FAILURE_PRESENTATIONS[code]
+    return FAILURE_PRESENTATIONS[normalized_code]
 
 
 class ChatTurnService:

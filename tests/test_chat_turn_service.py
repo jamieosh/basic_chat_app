@@ -1,7 +1,7 @@
 from agents.chat_harness import ChatHarnessIdentity, ChatHarnessRequest, ChatHarnessResult
 from agents.harness_registry import HarnessRegistry, HarnessResolutionError
 from persistence import ChatRepository, bootstrap_database
-from services import ChatTurnService
+from services import ChatTurnService, failure_presentation
 
 
 class FakeHarness:
@@ -19,6 +19,24 @@ class FakeHarness:
 
     def run(self, request: ChatHarnessRequest) -> ChatHarnessResult:
         return ChatHarnessResult(output_text=f"{self.identity.key}:{request.message}")
+
+
+def test_failure_presentation_uses_normalized_failure_codes():
+    presentation = failure_presentation("invalid_request")
+
+    assert presentation.title == "AI Service Error"
+    assert presentation.status_code == 502
+    assert presentation.log_event == "chat.invalid_request"
+
+
+def test_failure_presentation_maps_legacy_provider_aliases_to_normalized_codes():
+    invalid_request = failure_presentation("invalid_request")
+    provider_error = failure_presentation("provider_error")
+    empty_response = failure_presentation("empty_response")
+
+    assert failure_presentation("bad_request") == invalid_request
+    assert failure_presentation("api_error") == provider_error
+    assert failure_presentation("empty_model_response") == empty_response
 
 
 def test_chat_turn_service_replays_duplicate_request_without_creating_extra_turns(tmp_path):
