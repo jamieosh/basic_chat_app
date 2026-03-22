@@ -181,6 +181,12 @@ class ChatTurnService:
             )
         return self.resolve_harness_for_chat_session(turn_state.chat_session)
 
+    def response_harness_for_turn_state(self, turn_state: ChatTurnRequestState) -> ChatHarness:
+        try:
+            return self.resolve_harness_for_turn_state(turn_state)
+        except HarnessResolutionError:
+            return self.default_harness()
+
     def start_turn(
         self,
         *,
@@ -299,6 +305,8 @@ class ChatTurnService:
                 harness=harness,
                 harness_request=harness_request,
             )
+        except ValueError:
+            raise
         except ChatHarnessExecutionError as exc:
             failed_state = self.fail_turn(
                 client_id=client_id,

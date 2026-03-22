@@ -1212,9 +1212,9 @@ def test_send_message_offloads_blocking_harness_call_from_event_loop(client, mon
     response = _send_message(client, {"message": "Hi"})
 
     assert response.status_code == 200
-    assert captured["calls"][1][0].__name__ == "execute_harness_request"
-    assert captured["calls"][1][2]["harness"] is client.app.state.chat_harness
-    assert captured["calls"][1][2]["harness_request"] is captured["request"]
+    assert captured["calls"][1][0].__name__ == "execute_started_turn"
+    assert captured["calls"][1][2]["start_result"].turn_request_state is not None
+    assert captured["calls"][1][2]["message"] == "Hi"
     assert captured["request"].message == "Hi"
     assert captured["request"].conversation_history == ()
     assert "Hello from thread" in response.text
