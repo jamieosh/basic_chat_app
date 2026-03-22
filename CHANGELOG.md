@@ -2,6 +2,14 @@
 
 ## 2026-03-22
 
+### Ship Phase 3 Tool Hook And Capability Foundation
+
+- Extended `agents/chat_harness.py`, `agents/base_agent.py`, and `agents/__init__.py` so the Phase 3 harness contract now includes normalized tool capability metadata, tool-call/tool-result payload types, and an optional `execute_tool_call()` seam without changing the current non-streaming app flow.
+- Kept `agents/openai_agent.py` explicitly non-tool-aware by default while preserving the shipped two-event text/completion behavior for the OpenAI-backed harness adapter.
+- Added regression coverage in `tests/test_chat_harness_contract.py`, `tests/test_openai_agent.py`, `tests/test_chat_turn_service.py`, and `tests/test_main_routes.py` to prove tool events remain serialization-friendly, collector-safe, and invisible to the current persisted transcript and HTMX response flow.
+- Updated `README.md`, `AGENTS.md`, `plans/PHASE 3 BACKLOG.md`, and `plans/done/PHASE 3 DONE.md` so contributor guidance and Phase 3 planning docs describe the shipped tool-hook seam consistently.
+- Verification passed with `uv run ruff check .`, `uv run mypy .`, and `uv run python -m pytest` (`214 passed`).
+
 ### Ship Phase 3 Streaming-Capable Harness Execution Surface
 
 - Refactored `agents/chat_harness.py`, `agents/openai_agent.py`, and `services/chat_turns.py` so `run_events()` is now the canonical harness execution surface, while `run()` stays as the shared non-streaming collector over normalized event streams.

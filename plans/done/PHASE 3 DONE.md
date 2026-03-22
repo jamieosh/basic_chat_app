@@ -4,6 +4,27 @@ Completed Phase 3 backlog items move here once they are shipped.
 
 ## Completed Items
 
+### P3-06 Tool Hook And Capability Foundation
+
+Priority: P2
+
+Delivered:
+
+- extended `agents/chat_harness.py`, `agents/base_agent.py`, and `agents/__init__.py` so the normalized harness vocabulary now includes explicit tool capability metadata, `tool_call` and `tool_result` payload types, and backward-compatible `supports_tools` behavior
+- added an optional `execute_tool_call()` seam in `agents/chat_harness.py` so future harness-owned orchestration can plug into the contract without introducing a built-in tool loop in this slice
+- kept `agents/openai_agent.py` explicitly non-tool-aware by default while preserving the shipped two-event text/completion behavior and simple capability profile for harnesses that do not support tools
+- expanded regression coverage in `tests/test_chat_harness_contract.py`, `tests/test_openai_agent.py`, `tests/test_chat_turn_service.py`, and `tests/test_main_routes.py` to prove tool events stay serialization-friendly, collector-safe, and invisible to the current persisted transcript and HTMX response flow
+- updated contributor-facing docs so `README.md` and `AGENTS.md` describe the shipped tool-hook seam, normalized tool events, and current in-memory-only scope consistently
+
+Acceptance criteria met:
+
+- the harness contract can represent tool activity without app-layer redesign
+- harnesses that do not support tools can remain simple
+- the default shipped app does not need built-in tools to satisfy the Phase 3 design
+
+What the user sees:
+Usually no visible UI change yet, but the harness contract is now ready for future tool experiments without another app-layer redesign.
+
 ### P3-05 Streaming-Capable Harness Execution Surface
 
 Priority: P1

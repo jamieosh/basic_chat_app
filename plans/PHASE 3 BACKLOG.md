@@ -14,29 +14,6 @@ The rest of this backlog assumes `ChatHarness`, normalized harness types, and th
 
 ## Proposed Items
 
-### P3-06 Tool Hook And Capability Foundation
-
-Priority: P2
-
-Problem:
-If the Phase 3 contract is text-only, later tool-use experiments will either leak provider details or force another redesign soon after the harness boundary lands.
-
-Deliver:
-
-- add capability flags for tool-hook support
-- define normalized tool-call and tool-result event shapes
-- provide extension hooks for harness implementations that want tool orchestration later
-- avoid shipping a heavy built-in tool loop in this phase
-
-Acceptance criteria:
-
-- the harness contract can represent tool activity without app-layer redesign
-- harnesses that do not support tools can remain simple
-- the default shipped app does not need built-in tools to satisfy the Phase 3 design
-
-What the user sees:
-Usually no visible change yet, but the harness contract becomes future-proof enough for tool experiments.
-
 ### P3-07 Control-Layer Refactor, Error-Handling, And Harness Observability
 
 Priority: P1
@@ -119,6 +96,5 @@ No required UI change, but Phase 3 is now validated against a real alternative p
 
 - `P3-01`, `P3-02`, and `P3-03` are complete groundwork for the rest of Phase 3.
 - `P3-04` makes the harness useful for memory evolution, and `P3-05` now provides the shipped event-capable execution surface for future streaming work.
-- `P3-06` should stay intentionally light unless a concrete tool use case appears.
 - `P3-07` and `P3-08` should tighten the app-layer cleanup and documentation before the final proof step.
 - `P3-09` should land late in Phase 3 as the real-world proof that the harness boundary is not only OpenAI in disguise.
