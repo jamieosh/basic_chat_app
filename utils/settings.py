@@ -22,6 +22,12 @@ class RuntimeSettings:
     cors_allowed_methods: list[str]
     cors_allowed_headers: list[str]
     default_harness_key: str = "openai"
+    anthropic_api_key: str | None = None
+    anthropic_model: str = "claude-sonnet-4-20250514"
+    anthropic_prompt_name: str = "default"
+    anthropic_temperature: float = 1.0
+    anthropic_timeout_seconds: float = 30.0
+    anthropic_max_tokens: int = 1024
 
     def cors_middleware_kwargs(self) -> dict[str, object]:
         return {
@@ -49,6 +55,12 @@ def get_settings() -> RuntimeSettings:
         cors_allowed_methods=_get_csv_env("CORS_ALLOWED_METHODS", default=["*"]),
         cors_allowed_headers=_get_csv_env("CORS_ALLOWED_HEADERS", default=["*"]),
         default_harness_key=_get_optional_env("DEFAULT_CHAT_HARNESS_KEY") or "openai",
+        anthropic_api_key=_get_optional_env("ANTHROPIC_API_KEY"),
+        anthropic_model=_get_optional_env("ANTHROPIC_MODEL") or "claude-sonnet-4-20250514",
+        anthropic_prompt_name=_get_optional_env("ANTHROPIC_PROMPT_NAME") or "default",
+        anthropic_temperature=_get_float_env("ANTHROPIC_TEMPERATURE", default=1.0),
+        anthropic_timeout_seconds=_get_float_env("ANTHROPIC_TIMEOUT_SECONDS", default=30.0),
+        anthropic_max_tokens=_get_int_env("ANTHROPIC_MAX_TOKENS", default=1024),
     )
     _validate_settings(settings)
     return settings
@@ -91,6 +103,17 @@ def _get_csv_env(name: str, *, default: list[str]) -> list[str]:
     return items or list(default)
 
 
+def _get_int_env(name: str, *, default: int) -> int:
+    value = _get_optional_env(name)
+    if value is None:
+        return default
+
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a valid integer.") from exc
+
+
 def _get_path_env(name: str, *, default: Path) -> Path:
     value = _get_optional_env(name)
     if value is None:
@@ -110,6 +133,15 @@ def _validate_settings(settings: RuntimeSettings) -> None:
 
     if settings.openai_timeout_seconds <= 0:
         raise ValueError("OPENAI_TIMEOUT_SECONDS must be greater than 0.")
+
+    if not 0.0 <= settings.anthropic_temperature <= 1.0:
+        raise ValueError("ANTHROPIC_TEMPERATURE must be between 0.0 and 1.0.")
+
+    if settings.anthropic_timeout_seconds <= 0:
+        raise ValueError("ANTHROPIC_TIMEOUT_SECONDS must be greater than 0.")
+
+    if settings.anthropic_max_tokens <= 0:
+        raise ValueError("ANTHROPIC_MAX_TOKENS must be greater than 0.")
 
     if settings.chat_database_path.exists() and settings.chat_database_path.is_dir():
         raise ValueError("CHAT_DATABASE_PATH must point to a SQLite database file, not a directory.")

@@ -18,6 +18,7 @@ from .base_agent import (
     ConversationTurn,
 )
 from .harness_registry import HarnessRegistry, HarnessResolutionError, build_chat_harness_registry
+from .anthropic_agent import AnthropicAgent
 from .openai_agent import OpenAIAgent
 
 __all__ = [
@@ -40,6 +41,7 @@ __all__ = [
     "ConversationTurn",
     "HarnessRegistry",
     "HarnessResolutionError",
+    "AnthropicAgent",
     "OpenAIAgent",
     "build_chat_harness_registry",
 ]

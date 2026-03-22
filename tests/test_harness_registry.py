@@ -52,6 +52,12 @@ def _settings(*, default_harness_key: str = "openai") -> RuntimeSettings:
         cors_allowed_methods=["*"],
         cors_allowed_headers=["*"],
         default_harness_key=default_harness_key,
+        anthropic_api_key="anthropic-test-key",
+        anthropic_model="claude-sonnet-4-20250514",
+        anthropic_prompt_name="default",
+        anthropic_temperature=1.0,
+        anthropic_timeout_seconds=30.0,
+        anthropic_max_tokens=1024,
     )
 
 
@@ -97,16 +103,24 @@ def test_harness_registry_resolve_binding_rejects_version_mismatch():
 
 
 def test_build_chat_harness_registry_uses_settings_default_key(monkeypatch):
-    captured = {}
+    captured = {"openai": {}, "anthropic": {}}
 
     class StubOpenAIHarness(FakeHarness):
         def __init__(self, **kwargs):
-            captured.update(kwargs)
+            captured["openai"].update(kwargs)
             super().__init__("openai", provider_name="openai")
             self.model = kwargs["model"]
             self.prompt_name = kwargs["prompt_name"]
 
+    class StubAnthropicHarness(FakeHarness):
+        def __init__(self, **kwargs):
+            captured["anthropic"].update(kwargs)
+            super().__init__("anthropic", provider_name="anthropic")
+            self.model = kwargs["model"]
+            self.prompt_name = kwargs["prompt_name"]
+
     monkeypatch.setattr("agents.harness_registry.OpenAIAgent", StubOpenAIHarness)
+    monkeypatch.setattr("agents.harness_registry.AnthropicAgent", StubAnthropicHarness)
 
     registry = build_chat_harness_registry(_settings(default_harness_key="openai"))
     default_harness = registry.default()
@@ -114,10 +128,37 @@ def test_build_chat_harness_registry_uses_settings_default_key(monkeypatch):
     assert registry.default_key == "openai"
     assert default_harness.identity.key == "openai"
     assert default_harness.identity.provider_name == "openai"
-    assert captured == {
+    assert registry.require("anthropic").identity.provider_name == "anthropic"
+    assert captured["openai"] == {
         "api_key": "test-key",
         "model": "gpt-5-mini",
         "prompt_name": "default",
         "temperature": 1.0,
         "timeout": 30.0,
     }
+    assert captured["anthropic"] == {
+        "api_key": "anthropic-test-key",
+        "model": "claude-sonnet-4-20250514",
+        "prompt_name": "default",
+        "temperature": 1.0,
+        "timeout": 30.0,
+        "max_tokens": 1024,
+    }
+
+
+def test_build_chat_harness_registry_supports_anthropic_as_default(monkeypatch):
+    class StubOpenAIHarness(FakeHarness):
+        def __init__(self, **_kwargs):
+            super().__init__("openai", provider_name="openai")
+
+    class StubAnthropicHarness(FakeHarness):
+        def __init__(self, **_kwargs):
+            super().__init__("anthropic", provider_name="anthropic")
+
+    monkeypatch.setattr("agents.harness_registry.OpenAIAgent", StubOpenAIHarness)
+    monkeypatch.setattr("agents.harness_registry.AnthropicAgent", StubAnthropicHarness)
+
+    registry = build_chat_harness_registry(_settings(default_harness_key="anthropic"))
+
+    assert registry.default_key == "anthropic"
+    assert registry.default().identity.key == "anthropic"
