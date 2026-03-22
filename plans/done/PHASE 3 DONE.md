@@ -4,6 +4,28 @@ Completed Phase 3 backlog items move here once they are shipped.
 
 ## Completed Items
 
+### P3-09 Alternative Harness Proof Implementation
+
+Priority: P1
+
+Delivered:
+
+- added a shipped Anthropic-backed harness in `agents/anthropic_agent.py` with provider-specific request construction, prompt assembly, text extraction, and normalized failure mapping behind the existing `ChatHarness` contract
+- expanded `agents/harness_registry.py`, `utils/settings.py`, and `utils/diagnostics.py` so the app can be backend-configured to bind new chats to either `openai` or `anthropic`, while startup checks and readiness metadata follow the configured default harness
+- added `templates/prompts/anthropic/` plus regression coverage in `tests/test_anthropic_agent.py`, `tests/test_harness_registry.py`, `tests/test_settings.py`, `tests/test_diagnostics.py`, `tests/test_chat_turn_service.py`, and `tests/test_main_routes.py` to prove Anthropic selection, startup validation, and persisted binding behavior without route-level provider branching
+- updated `.env.example`, `README.md`, and `AGENTS.md` so the shipped provider-selection path is explicit for contributors and local runtime setup
+
+Acceptance criteria met:
+
+- the app can run end-to-end against Anthropic through backend configuration only
+- provider choice is clearly controlled through configuration for new chats, with OpenAI and Anthropic both being valid configured defaults
+- no route-level provider-specific branching is needed to support the alternative harness
+- harness logs and diagnostics remain normalized across the default and alternative harnesses
+- the Anthropic harness proves the contract can absorb a materially different provider shape without reshaping the web chat layer
+
+What the user sees:
+No required UI change, but the workbench can now be configured to use either OpenAI or Anthropic for newly created chats.
+
 ### P3-08 Test, Docs, And Forking Guidance Alignment
 
 Priority: P1

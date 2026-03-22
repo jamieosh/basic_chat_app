@@ -2,6 +2,13 @@
 
 ## 2026-03-22
 
+### Ship Phase 3 Anthropic Harness Proof Implementation
+
+- Added a shipped Anthropic-backed harness in `agents/anthropic_agent.py` and expanded `agents/harness_registry.py`, `utils/settings.py`, and `utils/diagnostics.py` so new chats can be backend-configured to bind to either `openai` or `anthropic` through `DEFAULT_CHAT_HARNESS_KEY`.
+- Added `templates/prompts/anthropic/` plus focused regression coverage in `tests/test_anthropic_agent.py`, `tests/test_harness_registry.py`, `tests/test_settings.py`, `tests/test_diagnostics.py`, `tests/test_chat_turn_service.py`, and `tests/test_main_routes.py` to lock Anthropic request construction, startup validation, readiness metadata, and persisted binding behavior without route-level provider branching.
+- Updated `.env.example`, `README.md`, and `AGENTS.md` so the shipped provider-selection path is explicit and contributors can see where to configure OpenAI vs Anthropic for new chats.
+- Final verification passed with `uv run ruff check .`, `uv run mypy .`, and `uv run python -m pytest` (`278 passed`).
+
 ### Ship Phase 3 Test, Docs, And Forking Guidance Alignment
 
 - Added explicit harness-boundary regression coverage in `tests/test_chat_harness_contract.py`, `tests/test_harness_registry.py`, `tests/test_chat_turn_service.py`, `tests/test_main_routes.py`, `tests/test_diagnostics.py`, and `tests/test_openai_agent.py` to lock registry resolution, fake-harness startup wiring, non-default readiness metadata, and OpenAI `run()`/`run_events()` parity while keeping alternate harnesses possible.
