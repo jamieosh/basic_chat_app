@@ -175,6 +175,32 @@ def test_run_events_expose_output_and_completion_with_anthropic_metadata():
     assert events[1].finish_reason == "completed"
 
 
+def test_run_collects_same_final_output_as_run_events():
+    agent = AnthropicAgent(api_key="test-key")
+    call_count = {"count": 0}
+
+    def fake_create(**_kwargs):
+        call_count["count"] += 1
+        return types.SimpleNamespace(
+            content=[types.SimpleNamespace(type="text", text="Collected reply")]
+        )
+
+    agent.client = types.SimpleNamespace(
+        messages=types.SimpleNamespace(create=fake_create)
+    )
+
+    event_result = "".join(
+        event.output_text or ""
+        for event in agent.run_events(ChatHarnessRequest(message="Hello there"))
+        if event.event_type == "output_text"
+    )
+    run_result = agent.run(ChatHarnessRequest(message="Hello there"))
+
+    assert event_result == "Collected reply"
+    assert run_result.output_text == "Collected reply"
+    assert call_count["count"] == 2
+
+
 def test_context_builder_preserves_default_prompt_and_transcript_order():
     agent = AnthropicAgent(api_key="test-key")
 

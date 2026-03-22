@@ -103,6 +103,7 @@ def app_with_fake_default_harness(tmp_path, fake_event_harness_factory):
             cors_allowed_methods=["*"],
             cors_allowed_headers=["*"],
             default_harness_key=key,
+            anthropic_api_key="anthropic-test-key" if key == "anthropic" else None,
         )
 
         app = main.create_app(settings=settings)
