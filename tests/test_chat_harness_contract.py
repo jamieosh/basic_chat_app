@@ -1,11 +1,16 @@
 import json
 from dataclasses import asdict
 
+import pytest
+
 from agents.base_agent import (
     BaseAgent,
     ChatContextBuilder,
+    ChatHarness,
     ChatHarnessContext,
     ChatHarnessCapabilities,
+    ChatHarnessEvent,
+    ChatHarnessExecutionError,
     ChatHarnessFailure,
     ChatHarnessIdentity,
     ChatHarnessObservability,
@@ -32,6 +37,71 @@ class FakeHarness(BaseAgent):
     def process_message(self, message: str, conversation_history=None) -> str:
         history_size = len(conversation_history or ())
         return f"{message} ({history_size})"
+
+
+class EventHarness(ChatHarness):
+    @property
+    def identity(self) -> ChatHarnessIdentity:
+        return ChatHarnessIdentity(
+            key="event-harness",
+            display_name="Event Harness",
+            model_display_name="Event Model",
+        )
+
+    def run_events(self, request: ChatHarnessRequest):
+        yield ChatHarnessEvent(
+            event_type="output_text",
+            output_text=request.message,
+            sequence=0,
+        )
+        yield ChatHarnessEvent(
+            event_type="output_text",
+            output_text=f" ({len(request.conversation_history)})",
+            sequence=1,
+        )
+        yield ChatHarnessEvent(
+            event_type="completed",
+            observability=ChatHarnessObservability(
+                model="event-model",
+                request_id=request.request_id,
+                tags={"surface": "events"},
+            ),
+            sequence=2,
+            finish_reason="stop",
+            metadata={"collector": "canonical"},
+        )
+
+
+class FailingEventHarness(ChatHarness):
+    @property
+    def identity(self) -> ChatHarnessIdentity:
+        return ChatHarnessIdentity(
+            key="failing-event-harness",
+            display_name="Failing Event Harness",
+            model_display_name="Event Model",
+        )
+
+    def run_events(self, request: ChatHarnessRequest):
+        yield ChatHarnessEvent(
+            event_type="output_text",
+            output_text=request.message,
+            sequence=0,
+        )
+        yield ChatHarnessEvent(
+            event_type="failed",
+            failure=ChatHarnessFailure(
+                code="provider_error",
+                message="provider failed",
+                retryable=True,
+                detail=f"request={request.request_id}",
+            ),
+            observability=ChatHarnessObservability(
+                model="event-model",
+                request_id=request.request_id,
+            ),
+            sequence=1,
+            metadata={"collector": "canonical"},
+        )
 
 
 class FakeContextBuilder:
@@ -96,6 +166,20 @@ def test_chat_harness_models_are_json_serializable():
             )
         ),
         "result": asdict(result),
+        "event": asdict(
+            ChatHarnessEvent(
+                event_type="completed",
+                output_text="Hello",
+                observability=ChatHarnessObservability(
+                    model="fake-model",
+                    provider="fake-provider",
+                    request_id="req-123",
+                ),
+                sequence=3,
+                finish_reason="stop",
+                metadata={"chat_id": "42"},
+            )
+        ),
     }
 
     encoded = json.dumps(payload)
@@ -106,6 +190,7 @@ def test_chat_harness_models_are_json_serializable():
     assert decoded["context"]["messages"][0]["role"] == "system"
     assert decoded["result"]["failure"]["code"] == "provider_error"
     assert decoded["result"]["observability"]["request_id"] == "req-123"
+    assert decoded["event"]["finish_reason"] == "stop"
 
 
 def test_chat_harness_request_exposes_transcript_alias_for_conversation_history():
@@ -145,6 +230,36 @@ def test_base_agent_run_adapts_legacy_process_message_to_harness_result():
     assert result.failure is None
     assert result.observability.model == "Fake Model"
     assert result.observability.request_id == "req-456"
+    assert result.finish_reason == "completed"
+
+
+def test_chat_harness_run_collects_final_result_from_event_stream():
+    harness = EventHarness()
+
+    result = harness.run(
+        ChatHarnessRequest(
+            message="Next",
+            conversation_history=(ConversationTurn(role="user", content="First"),),
+            request_id="req-456",
+        )
+    )
+
+    assert result.output_text == "Next (1)"
+    assert result.finish_reason == "stop"
+    assert result.observability.model == "event-model"
+    assert result.observability.request_id == "req-456"
+    assert result.observability.tags == {"surface": "events"}
+    assert result.metadata == {"collector": "canonical"}
+
+
+def test_chat_harness_run_raises_normalized_failure_from_event_stream():
+    harness = FailingEventHarness()
+
+    with pytest.raises(ChatHarnessExecutionError) as exc_info:
+        harness.run(ChatHarnessRequest(message="Next", request_id="req-456"))
+
+    assert exc_info.value.failure.code == "provider_error"
+    assert exc_info.value.failure.detail == "request=req-456"
 
 
 def test_base_agent_run_events_exposes_output_and_completion_events():
@@ -154,4 +269,5 @@ def test_base_agent_run_events_exposes_output_and_completion_events():
 
     assert [event.event_type for event in events] == ["output_text", "completed"]
     assert events[0].output_text == "Next (0)"
-    assert events[1].output_text == "Next (0)"
+    assert events[1].output_text is None
+    assert events[1].finish_reason == "completed"
