@@ -928,6 +928,57 @@ def test_send_message_replays_duplicate_failed_first_submit_without_reprocessing
     assert [message.content for message in messages] == ["First"]
 
 
+def test_send_message_replays_duplicate_harness_unavailable_request_without_reprocessing(
+    client, monkeypatch
+):
+    chat_turn_service = client.app.state.chat_turn_service
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    broken_chat = client.app.state.chat_repository.create_chat(
+        client_id="client-a",
+        title="Broken binding",
+        harness_key="missing",
+    )
+
+    start_result = chat_turn_service.start_turn(
+        client_id="client-a",
+        request_id="duplicate-harness-unavailable-request",
+        chat_session_id=broken_chat.id,
+        message="First",
+    )
+    execution_result = chat_turn_service.execute_started_turn(
+        client_id="client-a",
+        request_id="duplicate-harness-unavailable-request",
+        start_result=start_result,
+        message="First",
+    )
+
+    _patch_harness_failure(
+        monkeypatch,
+        client.app.state.chat_harness,
+        lambda _request: AssertionError("Should replay harness-unavailable failure"),
+    )
+
+    response = _send_message(
+        client,
+        {
+            "message": "First",
+            "chat_session_id": str(broken_chat.id),
+            "request_id": "duplicate-harness-unavailable-request",
+        },
+    )
+
+    assert execution_result.outcome == "failed"
+    assert response.status_code == 503
+    assert "configured chat harness is not available" in response.text
+    turn_request_state = client.app.state.chat_repository.get_turn_request_state(
+        client_id="client-a",
+        request_id="duplicate-harness-unavailable-request",
+    )
+    assert turn_request_state is not None
+    assert turn_request_state.turn_request.status == "failed"
+    assert turn_request_state.turn_request.failure_code == "harness_unavailable"
+
+
 def test_send_message_returns_request_in_progress_when_duplicate_request_is_still_processing(
     client, monkeypatch
 ):

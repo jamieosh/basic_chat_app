@@ -6,6 +6,7 @@ from agents.chat_harness import (
     ChatHarnessFailure,
     ChatHarnessIdentity,
     ChatHarnessRequest,
+    ChatHarnessResult,
     ChatHarnessToolCall,
     ChatHarnessToolResult,
     ConversationTurn,
@@ -438,6 +439,69 @@ def test_chat_turn_service_execute_started_turn_finalizes_unexpected_error(tmp_p
     assert execution_result.turn_request_state.turn_request.status == "failed"
     assert execution_result.turn_request_state.turn_request.failure_code == "unexpected_error"
     assert execution_result.observability.failure_code == "unexpected_error"
+
+
+def test_chat_turn_service_execute_started_turn_preserves_conflict_on_success_finalization(
+    tmp_path, monkeypatch
+):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    registry = HarnessRegistry({"openai": FakeHarness("openai")}, default_key="openai")
+    service = ChatTurnService(repository, registry)
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-execute-conflict",
+        chat_session_id=chat.id,
+        message="Hello",
+    )
+
+    def archive_then_return(*, harness, harness_request):
+        repository.archive_chat(chat_session_id=chat.id, client_id="client-a")
+        return ChatHarnessResult(output_text="late reply")
+
+    monkeypatch.setattr(service, "execute_harness_request", archive_then_return)
+    execution_result = service.execute_started_turn(
+        client_id="client-a",
+        request_id="request-execute-conflict",
+        start_result=start_result,
+        message="Hello",
+    )
+
+    assert execution_result.outcome == "succeeded"
+    assert execution_result.turn_request_state.turn_request.status == "conflicted"
+    assert execution_result.turn_request_state.turn_request.failure_code == "chat_unavailable"
+    assert execution_result.turn_request_state.assistant_message is None
+
+
+def test_chat_turn_service_response_harness_for_failed_missing_binding_uses_default_harness(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    registry = HarnessRegistry({"openai": FakeHarness("openai")}, default_key="openai")
+    service = ChatTurnService(repository, registry)
+    chat = repository.create_chat(client_id="client-a", title="Chat 1", harness_key="missing")
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-response-harness-missing",
+        chat_session_id=chat.id,
+        message="Hello",
+    )
+    execution_result = service.execute_started_turn(
+        client_id="client-a",
+        request_id="request-response-harness-missing",
+        start_result=start_result,
+        message="Hello",
+    )
+
+    assert execution_result.turn_request_state.turn_request.failure_code == "harness_unavailable"
+    assert (
+        service.response_harness_for_turn_state(execution_result.turn_request_state).identity.key
+        == "openai"
+    )
 
 
 def test_chat_turn_service_replays_duplicate_processing_request_state(tmp_path):
