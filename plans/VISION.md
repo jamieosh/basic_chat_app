@@ -1,77 +1,86 @@
-# Vision: Python-First LLM Chat Workbench
+# Vision: Lightweight Python Agent Workbench
 
 ## Mission
 
-A lightweight, web-based LLM chat application that is functional out of the box and serves as a clear, fast framework for experimenting with chat ideas, model integrations, testing out various frameworks (e.g. memory, tools/MCP, etc.), and building simple chat based application experiments.
+Build a lightweight, Python-first workbench for running, supervising, and comparing scoped agents through a simple web interface and other future surfaces.
+
+The project should remain usable out of the box as a personal or small-team tool while staying easy to fork for more focused use cases.
+
+## Product Framing
+
+This repository is no longer best understood as only a chat app with an LLM behind it.
+
+It is a workbench:
+
+- chat is the first surface, not the whole product
+- the runtime behind that surface should be replaceable and inspectable
+- memory, tools, and model behavior should be experiment-friendly
+- the default path should stay simple even if the architecture grows more capable
 
 ## Intended Users
 
-- Solo Python developers exploring LLM chat behavior.
-- Small teams building custom chat-based applications.
-- Fork maintainers who want a clean starting point, not a full product platform.
+- Solo Python developers exploring models, prompts, tools, memory, and agent behavior.
+- Small teams that want a usable local-first agent workbench without adopting a large platform.
+- Fork maintainers who want a clean base for a focused team chat or agent-driven application.
 
-## Product Positioning
+## Core Beliefs
 
-This project is a workbench, not a full-featured end-user product, but it will always be usable in it's default state.
-
-It prioritizes speed of iteration, clarity, and extensibility over breadth of built-in functionality.
-
-## Core Principles
-
-- Python-first developer experience.
-- Server-first web architecture with minimal JavaScript.
-- Lightweight frontend and low browser-side complexity.
-- Adaptive web UI, usable on all platforms.
-- Clear, straightforward APIs and class boundaries.
-- Few required files and methods to extend or fork.
-- Working defaults before optional sophistication.
-- Deterministic default behavior where predictability matters.
+- Python remains the center of gravity.
+- The web UI should stay server-first and minimal-JavaScript by default.
+- Chat is a valuable interaction pattern, but not the architectural boundary.
+- The important boundary is between product surfaces and the agent runtime behind them.
+- A session is richer than a transcript. It can later carry scope, tools, memory policy, artifacts, and execution history.
+- Multiple concurrent scoped agents are a normal use case, especially for personal coding and research workflows.
+- Inspectability matters. Traces, events, and explicit boundaries are more valuable than hidden magic.
+- Open standards should be used where they help, but the project should not depend on every new standard to be useful.
 
 ## Always-Simple Commitments
 
-Even as features grow, these must remain simple:
+- The default app must remain runnable and understandable without extra services.
+- The core send flow must stay easy to follow.
+- New capability should enter behind a small number of explicit seams.
+- Contributors should be able to change model/runtime behavior without rewriting the UI.
+- The project should stay fork-friendly rather than turning into a large hosted platform by default.
 
-- Project structure is easy to scan and understand.
-- Extension points are obvious and limited in number.
-- Core chat flow works without additional coding.
-- Major behavior changes can be made with small, localized edits.
+## What This Project Is Becoming
 
-## Scope and Non-Goals
+The intended long-term shape is:
 
-### In Scope
+- a lightweight web workbench for humans
+- over a minimal agent harness/runtime layer
+- with a small control-plane layer for sessions, runs, approvals, and scope
 
-- Functional chat app with clear extension seams.
-- Iteration-friendly architecture for models, memory, and tools.
-- Responsive web UI suitable for desktop and mobile.
+The control plane is important, but it starts small. Its first job is to support one person or a small team running multiple scoped agents safely and coherently. It is not an excuse to build a full enterprise orchestration platform from day one.
 
-### Out of Scope
+## In Scope
 
-- Internet-scale reliability and complexity.
-- "Everything included" agent framework behavior.
-- Mandatory enterprise-grade security in default setup.
-- Replicating LLM or Agent frameworks.
-- Treating authentication, persisted multi-chat continuity, streaming, or generalized runtime abstraction as baseline requirements before later phases call for them.
+- A usable default workbench with a clean web UI.
+- Clear boundaries between UI, runtime/harness, and control-plane concerns.
+- Experiments with multiple models, memory approaches, and tool capabilities.
+- Session-level behaviors such as compare, fork, replay, inspect, and resume.
+- Personal and small-team workflows involving more than one agent at a time.
 
-## Security Philosophy
+## Out Of Scope
 
-- The default template is not required to be secure by default.
-- The framework must make it feasible to add secure patterns when needed.
-- Security hardening is a later, optional maturity concern.
-- The completed Phase 1 workbench remains intentionally local-first and experimentation-first rather than deployment-hardened by default.
+- Becoming a general-purpose hosted agent platform.
+- Recreating every feature of large harnesses or research frameworks.
+- Building a full "Slack for agents" product as the primary target.
+- Treating multi-channel messaging integrations as a baseline requirement.
+- Forcing a specific framework or protocol to define the architecture.
+- Enterprise-scale security, governance, and operations as the default local setup.
 
-## Phased Maturity Model
+## Repo Strategy
 
-Each phase must:
-
-1. Deliver a usable, runnable chat experience without writing new code.
-2. Mature one clear capability area.
-3. Explicitly defer complexity not needed for that phase.
+- Keep one repository for now.
+- Create strong internal boundaries before considering a repo split.
+- Only split the harness/runtime into a separate partner repo once the boundary is stable, proven, and useful across more than one surface.
 
 ## Decision Filter
 
-A proposed feature or change is aligned only if it:
+A proposed change is aligned if it:
 
-- Preserves out-of-box usability.
-- Keeps extension points clear and small.
-- Avoids forcing extra complexity into basic usage.
-- Improves experimentation velocity for the next phase.
+- preserves a usable default workbench
+- strengthens the boundary between UI and runtime
+- improves experimentation with models, memory, tools, or workflows
+- supports inspectability and explicit control
+- avoids forcing platform-scale complexity into the default path

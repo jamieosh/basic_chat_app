@@ -6,19 +6,25 @@ Completed items should move to `plans/done/PHASE 3 DONE.md` once shipped.
 
 The intent is to keep the work incremental: each slice should leave the app runnable while tightening the harness boundary a little further.
 
+## Completed Groundwork
+
+`P3-01 Chat Agent Harness Vocabulary And Contracts` has already shipped and now lives in [`plans/done/PHASE 3 DONE.md`](/Users/jamie/Development/basic_chat_app/plans/done/PHASE%203%20DONE.md).
+
+The rest of this backlog assumes `ChatHarness`, normalized harness types, and the first contract vocabulary are already in place.
+
 ## Proposed Items
 
-### P3-02 Harness Registry, Startup Wiring, And Chat Binding
+### P3-02 Harness Registry, Control Wiring, And Stable Binding
 
 Priority: P0
 
 Problem:
-Startup currently instantiates one concrete OpenAI implementation directly, and chats are not yet associated with a harness binding that can survive later provider expansion.
+Startup still needs a clearer separation between the route layer, the small control/service layer, and harness resolution, and chats are not yet associated with a harness binding that can survive later provider expansion.
 
 Deliver:
 
 - add harness-focused startup wiring and a harness registry or factory
-- centralize harness selection behind app-level harness resolution
+- centralize harness selection behind a small control/service layer rather than route-level wiring
 - persist a harness key and optional harness version on chat creation
 - keep one chat bound to one harness configuration for its lifetime
 - keep provider or agent configuration independent from chat records and resolved through the harness binding
@@ -27,6 +33,7 @@ Deliver:
 Acceptance criteria:
 
 - the app can resolve the harness for a chat without route-level provider branching
+- the route layer no longer acts as the de facto owner of harness selection and execution wiring
 - new chats are created with a stable harness binding
 - the default configuration remains simple for contributors who only want the shipped baseline
 
@@ -93,6 +100,7 @@ Deliver:
 - keep `run()` only as a thin collector over `run_events()` for non-streaming callers
 - support collection of a final assistant response for the existing non-streaming web flow
 - define normalized event types that can later support streaming text, tool activity, and completion metadata
+- make run/event metadata inspectable enough for the small control/service layer to reason about execution coherently
 - keep the initial Phase 3 web UX simple even if the harness surface is stream-ready
 
 Acceptance criteria:
@@ -101,6 +109,7 @@ Acceptance criteria:
 - a harness can expose streaming-capable events without redesigning the app-facing contract
 - the current HTMX send flow can still collect a final assistant message deterministically
 - tests cover both collected-final-response behavior and event-surface normalization
+- normalized events carry enough metadata to support later inspectability without exposing provider-specific payloads to routes
 
 What the user sees:
 Possibly no immediate UI change, but the app stops being architecturally blocked on future streaming support.
@@ -128,16 +137,16 @@ Acceptance criteria:
 What the user sees:
 Usually no visible change yet, but the harness contract becomes future-proof enough for tool experiments.
 
-### P3-07 Route, Service, Error-Handling, And Harness Observability Refactor
+### P3-07 Control-Layer Refactor, Error-Handling, And Harness Observability
 
 Priority: P1
 
 Problem:
-Even with a better harness contract, the app still needs its request lifecycle, observability, and failure presentation paths cleaned up so the web layer depends only on normalized harness outcomes.
+Even with a better harness contract, the app still needs a small control/service layer that owns request lifecycle, observability, and failure presentation so the web layer depends only on normalized harness outcomes.
 
 Deliver:
 
-- refactor route and service code to consume normalized harness results and failures
+- refactor route and service code so a small control/service layer consumes normalized harness results and failures
 - move provider-specific error mapping out of route handlers
 - normalize harness-level observability fields for logs and diagnostics across providers
 - preserve the existing persistence and idempotency guarantees from Phase 2
@@ -146,6 +155,7 @@ Deliver:
 Acceptance criteria:
 
 - route handlers do not branch on provider SDK exception classes
+- the control/service layer owns normalized run lifecycle coordination without becoming a large orchestration system
 - logs and diagnostics can identify the harness key, optional version, provider identity, and normalized failure category without provider-specific branching in routes
 - request lifecycle behavior remains covered for success, failure, duplicate replay, and conflict cases
 - the app layer remains responsible for persistence outcomes and user-facing rendering
@@ -167,7 +177,7 @@ Deliver:
 - document how to add a new harness implementation without touching unrelated web-chat code
 - update [`README.md`](/Users/jamie/Development/basic_chat_app/README.md) to explain the Phase 3 chat agent harness boundary, extension seam, and default customization path clearly
 - update [`AGENTS.md`](/Users/jamie/Development/basic_chat_app/AGENTS.md) so the project summary, architecture notes, and contributor guidance stay aligned with the harness terminology
-- update planning docs to keep Phase 3 terminology aligned with the contributor-facing docs
+- update planning docs to keep Phase 3 terminology aligned with the contributor-facing docs and the newer workbench/control-layer framing
 - align backlog, design, done, and contributor guidance as items ship
 
 Acceptance criteria:
@@ -175,6 +185,7 @@ Acceptance criteria:
 - contributors can follow one obvious path to add a new provider-backed harness
 - Phase 3 terminology is consistent across code and docs
 - [`README.md`](/Users/jamie/Development/basic_chat_app/README.md) and [`AGENTS.md`](/Users/jamie/Development/basic_chat_app/AGENTS.md) describe the same extension model as the Phase 3 planning docs
+- the updated docs describe the UI, harness, and small control/service layer consistently
 - tests lock the default harness behavior while leaving space for alternate implementations
 
 What the user sees:
@@ -206,7 +217,8 @@ No required UI change, but Phase 3 is now validated against a real alternative p
 
 ## Sequencing Notes
 
-- `P3-01` through `P3-03` establish the core harness seam and should land first.
+- `P3-01` is already complete groundwork for the rest of Phase 3.
+- `P3-02` and `P3-03` establish the control wiring and default-harness migration on top of that groundwork.
 - `P3-04` and `P3-05` make the harness actually useful for memory and streaming evolution.
 - `P3-06` should stay intentionally light unless a concrete tool use case appears.
 - `P3-07` and `P3-08` should tighten the app-layer cleanup and documentation before the final proof step.

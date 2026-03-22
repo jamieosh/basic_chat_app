@@ -2,14 +2,15 @@
 
 ## Last Reviewed
 
-- 2026-03-15
+- 2026-03-22
 
 ## Project Summary
 
-This repository is a FastAPI + HTMX chat workbench with persisted multi-turn chats, route-backed chat restoration, and OpenAI-backed responses.
+This repository is a FastAPI + HTMX chat workbench with persisted multi-turn chats, route-backed chat restoration, and a Phase 3 chat-harness boundary between the web app and provider-backed runtime code.
 
 Current stage:
 - Phase 2 baseline complete
+- Phase 3 harness decoupling in progress
 - Multi-chat, persisted, browser-cookie-scoped local-first chat experience
 - Still not a full production chat platform
 
@@ -23,29 +24,34 @@ Current stage:
 - Persists user/assistant turns in SQLite and restores transcripts after reload or direct URL revisit
 - Prevents duplicate request processing with persisted request IDs and conflict-aware replay
 - Supports chat delete while keeping archive backend-only in Phase 2
-- Calls OpenAI (currently `gpt-5-mini`) through `agents/openai_agent.py`
+- Executes chat requests through the `ChatHarness` contract and ships an OpenAI-backed default harness (`gpt-5-mini`)
 - Formats text/code-block output into HTML
 - Returns inline bot message HTML for HTMX insertion
 - Exposes a basic health check at `/health`
+- Exposes a readiness check at `/health/ready`
 
 ## High-Level Architecture
 
 - `main.py`
   - FastAPI app setup
   - CORS/static/template setup
-  - Full page routes, HTMX partial routes, send lifecycle, and response/error rendering
+  - Full page routes, HTMX partial routes, send lifecycle, readiness wiring, and response/error rendering
 - `agents/`
-  - `base_agent.py`: abstract interface
-  - `openai_agent.py`: OpenAI implementation
+  - `base_agent.py`: legacy compatibility shim and harness re-export
+  - `chat_harness.py`: app-facing `ChatHarness` contract plus normalized request/result/event/failure types
+  - `openai_agent.py`: default OpenAI-backed harness implementation
 - `services/`
-  - `chat_turns.py`: turn-request lifecycle, failure mapping, and idempotent replay contract
+  - `chat_turns.py`: small control/service layer for turn-request lifecycle, failure presentation, and idempotent replay coordination
 - `persistence/`
   - `db.py`: SQLite bootstrap
   - `repository.py`: chat, message, and turn-request persistence helpers
 - `utils/`
+  - `client_identity.py`: browser-cookie-scoped anonymous client identity
+  - `diagnostics.py`: startup and readiness diagnostics
   - `prompt_manager.py`: Jinja template loading for system/user prompts
   - `html_formatter.py`: escapes output and formats basic markdown code fences
   - `logging_config.py`: logger bootstrap/config
+  - `settings.py`: environment-driven runtime settings
 - `templates/`
   - `index.html`: main page shell
   - `components/chat.html`: chat body + form
@@ -62,6 +68,19 @@ Current stage:
 - If dependencies change:
   - update via `uv add`/`uv remove` (which updates `pyproject.toml` and `uv.lock`).
   - keep `uv.lock` committed and use `uv sync --frozen` in CI/local verification.
+
+## Planning And Branch Workflow
+
+- Phase planning lives under `plans/`.
+- The current active backlog is `plans/PHASE 3 BACKLOG.md`.
+- Shipped backlog items move to `plans/done/PHASE 3 DONE.md`.
+- Feature implementation plans should live at `plans/<slug>.md` on a matching `codex/<slug>` branch.
+- The local helper skills in `.agents/skills/` assume this workflow:
+  - `feature-start`: choose/refine a backlog slice and write `plans/<slug>.md`
+  - `feature-build`: implement the checked plan incrementally on `codex/<slug>`
+  - `feature-ship`: update docs/backlog/changelog, verify, merge to `main`, and clean up
+  - `feature-abandon`: safely discard an in-progress `codex/<slug>` branch after confirmation
+- Do not overwrite existing user edits in `plans/`, `CHANGELOG.md`, or other shared docs just because a skill expects to update them.
 
 ## Run Locally
 
@@ -81,6 +100,8 @@ Current stage:
 - Existing chat URLs restore the saved transcript on full page load.
 - Follow-up sends append to the same persisted chat until the user starts a new chat or switches chats.
 - Duplicate request IDs replay the stored outcome instead of creating duplicate turns.
+- The app layer now depends on normalized harness contracts rather than provider SDK exceptions.
+- The default shipped runtime remains OpenAI-backed, but provider-specific behavior should stay inside harness code.
 - Prompting is template-driven:
   - System prompt and optional context prompt are loaded from `templates/prompts/openai/`.
 - UI stays server-rendered and HTMX-first rather than introducing SPA-owned chat state.
@@ -88,6 +109,7 @@ Current stage:
 ## Known Gaps (Important)
 
 - No auth, user-facing archive browsing, rate controls, or streaming response support.
+- The harness contract is normalized and ready for further Phase 3 work, but the repo is still mid-migration toward richer runtime binding, streaming-ready events, and alternative harness implementations.
 
 ## Guidance For Future Contributors
 
@@ -95,11 +117,14 @@ Current stage:
 - Preserve the HTMX contract:
   - `/send-message-htmx` should return a message HTML snippet for append.
 - Keep the route-backed restore behavior and hidden `chat_session_id` wiring intact when editing the shell.
-- If you update model behavior, keep prompt templates and model naming in sync.
+- Keep provider-specific logic behind `agents/chat_harness.py` interfaces rather than reintroducing it into route handlers.
+- If you update model behavior, keep prompt templates, settings defaults, and harness naming in sync.
+- If you ship a backlog item, keep `README.md`, `AGENTS.md`, `CHANGELOG.md`, and the matching `plans/` backlog/done files aligned.
 - Add tests for:
   - repository/service lifecycle behavior
   - route error paths
   - restore/revisit browser behavior when routing changes
+  - harness contract behavior and normalized failure paths
   - prompt loading/rendering
   - message formatting behavior
 
@@ -113,12 +138,20 @@ Current tests are located in `tests/` and use `pytest`.
   - Verifies chat/message persistence plus turn-request lifecycle storage behavior.
 - `tests/test_chat_turn_service.py`
   - Verifies idempotent replay and lifecycle conflict behavior through the service layer.
+- `tests/test_chat_harness_contract.py`
+  - Verifies normalized harness types and compatibility behavior.
 - `tests/test_openai_agent.py`
-  - Verifies prompt/message construction and input validation.
+  - Verifies OpenAI harness request construction, normalization, and input validation.
 - `tests/test_prompt_manager.py`
   - Verifies template rendering and missing-template handling.
 - `tests/test_html_formatter.py`
   - Verifies escaping and fenced code-block formatting.
+- `tests/test_settings.py`
+  - Verifies environment-driven runtime settings parsing and validation.
+- `tests/test_diagnostics.py`
+  - Verifies startup and readiness diagnostics behavior.
+- `tests/test_logging_config.py`
+  - Verifies logging setup behavior.
 - `tests/e2e/test_chat_smoke.py`
   - Browser coverage for page load, send flow, restore/revisit behavior, and visual snapshots (Playwright).
 
@@ -152,3 +185,4 @@ When adding or changing behavior, create or update tests with these rules:
 - Keep tests small and focused:
   - one primary behavior per test
   - avoid broad, brittle integration-only tests for simple logic changes
+- If the change affects harness/provider boundaries, add or update contract-level tests so route code stays decoupled from provider-specific behavior.

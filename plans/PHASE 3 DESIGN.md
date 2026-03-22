@@ -1,6 +1,6 @@
 # Phase 3 Design
 
-This document captures the intended Phase 3 product and architecture shape so contributors can make the chat agent harness boundary clearer without losing the lightweight workbench posture of the app.
+This document captures the intended Phase 3 product and architecture shape so contributors can make the harness boundary clearer without losing the lightweight workbench posture of the project.
 
 See [`plans/PHASE 3 BACKLOG.md`](/Users/jamie/Development/basic_chat_app/plans/PHASE%203%20BACKLOG.md) for the proposed delivery slices.
 
@@ -8,7 +8,7 @@ See [`plans/PARKING LOT.md`](/Users/jamie/Development/basic_chat_app/plans/PARKI
 
 ## Goal
 
-Phase 3 moves the app from a chat UI that is still coupled fairly directly to one provider implementation into a chat workbench with a clear application-facing chat agent harness boundary.
+Phase 3 moves the project from a chat-first app that is still coupled fairly directly to one provider implementation into a lightweight workbench with a clear application-facing harness boundary and a small control-layer seam.
 
 That boundary should make all of the following easier without route-level rewrites:
 
@@ -19,6 +19,7 @@ That boundary should make all of the following easier without route-level rewrit
 - adding tool-use hooks later without redesigning the app surface
 - keeping open the option of a future split between the web app and a separate harness service
 - proving the abstraction with at least one real non-default harness that is configured only in the backend
+- making inspectable runs, events, and stable bindings easier to support without treating the transcript as the whole system
 
 ## Design Principles
 
@@ -28,10 +29,12 @@ That boundary should make all of the following easier without route-level rewrit
 - Design the Phase 3 harness in-process first, but with request and response objects that are clean enough to become RPC-safe later.
 - Keep the common harness contract small and explicit.
 - Use optional capability flags rather than leaking provider-specific behavior into the app layer.
-- Let the chat app continue to own request lifecycle, persistence, routing, and browser/client ownership.
+- Keep a small control/service layer between routes and harnesses so the web layer is not the de facto runtime owner.
+- Let the current chat-centric persistence and routing continue to work, but avoid treating transcript history as the only durable concept forever.
 - Let the harness layer own context assembly and prompt-template concerns.
 - Treat frameworks such as LangChain as implementation details behind the same harness contract, not as app-level concepts.
 - Keep one chat bound to one harness configuration for its lifetime unless a later phase explicitly introduces harness switching.
+- Improve inspectability through normalized events and observability rather than hidden provider behavior.
 
 ## What Phase 3 Means For Users
 
@@ -47,7 +50,7 @@ Users may not see a large visible difference immediately, but they should benefi
 
 ## What Phase 3 Means For Developers And Forks
 
-Phase 3 is the point where model and harness experimentation should stop spilling across routes, startup wiring, and provider-specific error handling.
+Phase 3 is the point where model and harness experimentation should stop spilling across routes, startup wiring, and provider-specific error handling, and where the first small control-layer seam should become visible.
 
 For developers and fork maintainers, the intended outcome is:
 
@@ -57,6 +60,7 @@ For developers and fork maintainers, the intended outcome is:
 - trying a framework-backed harness should not require reshaping the chat UI or route flow
 - future non-web interfaces should be able to reuse the same harness contract
 - the Phase 3 seam is validated by at least one real non-default harness rather than only a renamed OpenAI path
+- the route layer starts to look like a client of a small control/service layer rather than the owner of execution behavior
 
 ## Resolved Scope Decisions
 
@@ -65,17 +69,20 @@ For developers and fork maintainers, the intended outcome is:
 - Phase 3 keeps the chat agent harness in-process with the FastAPI app.
 - The harness contract should be designed so it could later be exposed across an API or worker boundary.
 - Phase 3 does not introduce a separate harness service or separate deployment unit.
+- Phase 3 may introduce a small control/service layer inside the same app, but not a large orchestration system.
 
 ### Layer Responsibilities
 
 - Interface/transport layer:
   - web routes, HTMX responses, and any later Telegram or WhatsApp adapters
-- Chat application layer:
-  - chat ownership, persistence, request lifecycle, idempotency, transcript loading, and UI-facing failure presentation
+- Minimal control layer:
+  - current chat identity, future session-friendly binding concepts, run lifecycle coordination, normalized observability, and UI-facing failure presentation
 - Chat agent harness layer:
   - normalized chat execution contract, context assembly, prompt-template use, provider selection, capability exposure, observability hooks, and execution hooks
 - Provider or harness layer:
   - concrete OpenAI, Claude, OpenRouter, or framework-backed implementations
+
+Phase 3 does not need a rich session model yet, but it should stop assuming that a plain chat transcript is the full durable object of the system.
 
 ### Chat Agent Harness Ownership Of Memory Assembly
 
@@ -106,6 +113,7 @@ This is the recommended split because memory policy is part of harness behavior,
 - In this phase, that means a persisted harness key plus optional harness version, not a full provider-configuration snapshot and not a dedicated long-lived Python object per chat.
 - Provider or agent configuration should be managed independently from the chat record and resolved through the bound harness key and version.
 - Phase 3 may keep harness selection implicit through a single default harness at first, but the data model and harness contract should not assume only one provider forever.
+- Current chat records can remain the persisted binding anchor in Phase 3, but the control-layer contract should leave room for a richer session model in later phases.
 
 ## Chat Agent Harness Contract Shape
 
@@ -118,6 +126,7 @@ The app-facing chat agent harness boundary should be able to express at least th
 - normalized failure categories
 - extension hooks for context builders and later tool orchestration
 - normalized observability metadata for logging and diagnostics
+- enough identity and binding metadata for a later control layer to reason about runs without route-level provider knowledge
 
 For code-facing naming, Phase 3 should prefer `ChatHarness` as the primary abstraction name. `Chat Agent Harness` can remain the broader planning term in contributor-facing docs, but implementation code should stay shorter and more direct.
 
@@ -149,17 +158,19 @@ The intended boundary is:
 - harness implementations own prompt assembly, provider SDK calls, and mapping provider-specific exceptions into `ChatHarnessFailure`
 - provider-specific request and exception types stay inside the harness/provider implementation instead of leaking back into routes
 
+P3-01 should now be treated as completed groundwork for the rest of Phase 3 rather than an open design question.
+
 ## Information Flow
 
 The intended Phase 3 flow is:
 
 1. The web route validates the request and resolves the target chat.
-2. The chat application layer starts the turn lifecycle and loads the persisted transcript.
-3. The app resolves the chat agent harness bound to that chat.
-4. The app sends a normalized harness request plus raw prior turns into the harness layer.
+2. A small control/service layer starts the turn lifecycle and loads the persisted transcript.
+3. The control/service layer resolves the chat agent harness bound to that chat.
+4. The control/service layer sends a normalized harness request plus raw prior turns into the harness layer.
 5. The harness assembles model-facing context through its configured context builders.
 6. The harness executes the selected provider or harness implementation and emits normalized events or a final result.
-7. The chat application layer maps the normalized result back into persisted assistant turns or normalized failure outcomes.
+7. The control/service layer maps the normalized result back into persisted assistant turns or normalized failure outcomes.
 8. The web layer renders the HTMX response without knowing provider-specific details.
 
 ## Persistence And Configuration Implications
@@ -168,6 +179,7 @@ The intended Phase 3 flow is:
 - Phase 3 likely needs a persisted harness key and optional harness version on each chat session, even if all new chats initially use the same default harness.
 - Harness definitions and provider configuration should be centralized in harness-focused settings and factory wiring rather than scattered through route startup code.
 - Prompt templates should move behind the harness/context assembly layer rather than living as a route concern or a provider-only concern.
+- The initial control/service layer should own normalized run lifecycle coordination without pretending to be a full control plane yet.
 
 ## Interface Neutrality And Future Multi-Client Use
 
@@ -179,6 +191,7 @@ That means:
 - harness request and result types should not assume HTML or HTMX
 - harness behavior should be reusable by later interface adapters
 - a later web-app to harness-service split should feel like an extraction of the same contract, not a replacement architecture
+- the initial control/service layer should be thin enough that it can later grow into a richer session/run control layer without being rewritten from scratch
 
 ## Alternative Harness Proof Requirement
 
@@ -201,6 +214,7 @@ This proof implementation should:
 - a full tool-execution loop
 - file attachments, project containers, or chat forking workflows
 - authentication or public-deployment hardening
+- a rich multi-agent control plane or collaboration model
 - forcing third-party frameworks into the baseline architecture
 - replacing the server-rendered HTMX-first UI model
 
@@ -215,6 +229,7 @@ This proof implementation should:
 - Normalize harness-level observability so logs and diagnostics stay comparable across provider implementations.
 - Prove the boundary with at least one fake or minimal non-OpenAI harness in tests before calling the design complete.
 - Prove the boundary with one real non-default harness implementation before calling Phase 3 complete.
+- Keep the first control/service layer small enough that contributors can still follow the default send flow without learning a full orchestration system.
 
 ## Anti-Goals
 
@@ -231,3 +246,4 @@ These do not block the Phase 3 design direction, but they should stay explicit w
 - whether the initial Phase 3 harness should expose a synchronous `run()` plus a streaming-capable `run_events()` path, or standardize immediately on an event-stream-first surface with a collector for non-streaming callers
 - how much provider configuration should remain live behind a named harness key and optional version versus being selectively snapshotted for stronger reproducibility
 - whether tool-call and tool-result events should be stored in persistence during Phase 3, or only normalized in-memory while the canonical transcript remains user and assistant messages only
+- how far the initial control/service layer should go in representing runs and event history before Phase 4 takes on the richer session model explicitly
