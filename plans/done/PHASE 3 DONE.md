@@ -4,6 +4,29 @@ Completed Phase 3 backlog items move here once they are shipped.
 
 ## Completed Items
 
+### P3-05 Streaming-Capable Harness Execution Surface
+
+Priority: P1
+
+Delivered:
+
+- refactored `agents/chat_harness.py` so `run_events()` is the canonical execution surface, `run()` is a shared collector over normalized events, and event/result invariants enforce ordered output, terminal completion, and normalized failure handling
+- updated `agents/openai_agent.py` so the shipped OpenAI adapter emits one event-driven execution path instead of keeping separate provider logic for `run()` and `run_events()`
+- added a small collection seam in `services/chat_turns.py` and wired `main.py` through it so the current HTMX send flow still persists and renders one deterministic final assistant reply without introducing browser streaming yet
+- expanded regression coverage in `tests/test_chat_harness_contract.py`, `tests/test_openai_agent.py`, `tests/test_chat_turn_service.py`, and `tests/test_main_routes.py` to lock multi-event collection, failure propagation after partial output, and default OpenAI parity through the canonical event surface
+- updated contributor-facing docs so `README.md` and `AGENTS.md` describe the shipped harness contract as event-first and keep extension guidance aligned with the Phase 3 execution model
+
+Acceptance criteria met:
+
+- provider implementations do not maintain separate execution logic for `run()` and `run_events()`
+- a harness can expose streaming-capable events without redesigning the app-facing contract
+- the current HTMX send flow can still collect a final assistant message deterministically
+- tests cover both collected-final-response behavior and event-surface normalization
+- normalized events carry enough metadata to support later inspectability without exposing provider-specific payloads to routes
+
+What the user sees:
+No major visible UI change yet, but the app is no longer architecturally blocked on future streaming-capable harness behavior.
+
 ### P3-04 Context Builders And Harness-Owned Memory Assembly
 
 Priority: P1

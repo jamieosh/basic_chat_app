@@ -3,7 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from agents.harness_registry import HarnessRegistry, HarnessResolutionError
-from agents.chat_harness import ChatHarness, ChatHarnessRequest
+from agents.chat_harness import (
+    ChatHarness,
+    ChatHarnessRequest,
+    ChatHarnessResult,
+    collect_harness_events,
+)
 from persistence.db import DEFAULT_CHAT_HARNESS_KEY
 from persistence.repository import (
     ChatRepository,
@@ -188,6 +193,14 @@ class ChatTurnService:
             request_id=request_id,
             assistant_content=assistant_content,
         )
+
+    def execute_harness_request(
+        self,
+        *,
+        harness: ChatHarness,
+        harness_request: ChatHarnessRequest,
+    ) -> ChatHarnessResult:
+        return collect_harness_events(harness.run_events(harness_request))
 
     def fail_turn(
         self,

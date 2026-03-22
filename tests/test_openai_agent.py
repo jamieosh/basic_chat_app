@@ -137,6 +137,59 @@ def test_run_returns_chat_harness_result_with_openai_observability():
     assert result.metadata["model_display_name"] == "GPT-5 Mini"
 
 
+def test_run_events_exposes_output_and_completion_with_openai_metadata():
+    agent = OpenAIAgent(api_key="test-key")
+
+    def fake_create(**_kwargs):
+        return types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="Harness reply"))]
+        )
+
+    agent.client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=fake_create)
+        )
+    )
+
+    events = list(agent.run_events(ChatHarnessRequest(message="Hello there", request_id="req-123")))
+
+    assert [event.event_type for event in events] == ["output_text", "completed"]
+    assert events[0].output_text == "Harness reply"
+    assert events[0].observability.provider == "openai"
+    assert events[0].observability.request_id == "req-123"
+    assert events[0].metadata["model_display_name"] == "GPT-5 Mini"
+    assert events[1].output_text is None
+    assert events[1].finish_reason == "completed"
+
+
+def test_run_collects_same_final_output_as_run_events():
+    agent = OpenAIAgent(api_key="test-key")
+    call_count = {"count": 0}
+
+    def fake_create(**_kwargs):
+        call_count["count"] += 1
+        return types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="Collected reply"))]
+        )
+
+    agent.client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=fake_create)
+        )
+    )
+
+    event_result = "".join(
+        event.output_text or ""
+        for event in agent.run_events(ChatHarnessRequest(message="Hello there"))
+        if event.event_type == "output_text"
+    )
+    run_result = agent.run(ChatHarnessRequest(message="Hello there"))
+
+    assert event_result == "Collected reply"
+    assert run_result.output_text == "Collected reply"
+    assert call_count["count"] == 2
+
+
 def test_run_uses_builder_generated_context_and_records_builder_metadata():
     agent = OpenAIAgent(api_key="test-key")
     captured = {}

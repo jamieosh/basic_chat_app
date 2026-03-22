@@ -12,6 +12,7 @@ from .chat_harness import (
     ChatHarnessResult,
     ContextMessage,
     ConversationTurn,
+    collect_harness_events,
 )
 from .context_builders import ChatContextBuilder
 
@@ -30,4 +31,5 @@ __all__ = [
     "ChatHarnessResult",
     "ContextMessage",
     "ConversationTurn",
+    "collect_harness_events",
 ]

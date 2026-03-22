@@ -21,7 +21,7 @@ Those documents define the long-term direction and maturity phases. This README 
 - In-flight request locking plus persisted request IDs so duplicate submissions are replayed instead of being processed twice.
 - Lightweight loading feedback while switching chats.
 - Inline failure handling for validation, service-unavailable, and transport-error states.
-- OpenAI-backed default harness adapter resolved through the normalized `ChatHarness.run()` path (`gpt-5-mini` by default).
+- OpenAI-backed default harness adapter resolved through the normalized event-capable `ChatHarness` surface, with `run_events()` canonical and `run()` acting as the non-streaming collector (`gpt-5-mini` by default).
 - Startup-wired harness registry plus stable per-chat harness binding (`harness_key` with optional version metadata).
 - Harness-owned context builders that assemble model-facing prompt and transcript context from the canonical persisted chat history.
 - SQLite-backed chat storage with per-client chat ownership and transcript persistence across reloads and restarts.
@@ -256,7 +256,7 @@ uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 
 ### Adding New Features
 
-1. **New Harness Types**: Implement `ChatHarness` in `agents/chat_harness.py`, register the implementation in `agents/harness_registry.py`, and keep route handlers unaware of provider-specific selection logic. Provider-backed harnesses should prefer native `run()` implementations; `BaseAgent` remains available only as a compatibility shim for legacy `process_message()` implementations.
+1. **New Harness Types**: Implement `ChatHarness` in `agents/chat_harness.py`, register the implementation in `agents/harness_registry.py`, and keep route handlers unaware of provider-specific selection logic. Provider-backed harnesses should prefer native `run_events()` implementations, with `run()` left as the shared collector; `BaseAgent` remains available only as a compatibility shim for legacy `process_message()` implementations.
 2. **Custom Prompts And Memory Assembly**: Add or adapt templates in `templates/prompts/<agent_type>/`, then assemble them behind a harness-owned context builder instead of teaching routes how to shape provider-facing history.
 3. **UI Components**: Add new components in `templates/components/`
 

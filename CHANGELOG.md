@@ -2,6 +2,14 @@
 
 ## 2026-03-22
 
+### Ship Phase 3 Streaming-Capable Harness Execution Surface
+
+- Refactored `agents/chat_harness.py`, `agents/openai_agent.py`, and `services/chat_turns.py` so `run_events()` is now the canonical harness execution surface, while `run()` stays as the shared non-streaming collector over normalized event streams.
+- Updated `main.py`, `tests/test_chat_harness_contract.py`, `tests/test_openai_agent.py`, `tests/test_chat_turn_service.py`, and `tests/test_main_routes.py` so the current HTMX send flow deterministically collects multi-event output into one persisted assistant reply and rejects partial assistant persistence when a stream fails.
+- Refreshed `README.md` and `AGENTS.md` so contributor guidance now describes the Phase 3 harness contract as event-first, with provider-backed implementations expected to expose `run_events()` directly.
+- Updated `plans/PHASE 3 BACKLOG.md` and `plans/done/PHASE 3 DONE.md` to record `P3-05` as shipped and remove it from the active backlog.
+- Verification passed with `uv run ruff check .`, `uv run mypy .`, and `uv run python -m pytest` (`208 passed`).
+
 ### Ship Phase 3 Context Builders And Harness-Owned Memory Assembly
 
 - Added harness-owned context assembly types and pluggable builders in `agents/chat_harness.py` and `agents/context_builders.py`, so model-facing context can evolve behind the harness boundary while persisted chat messages remain the canonical raw transcript.

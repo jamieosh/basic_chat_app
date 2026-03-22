@@ -119,10 +119,30 @@ class ChatHarnessEvent:
     failure: ChatHarnessFailure | None = None
     observability: ChatHarnessObservability = field(default_factory=ChatHarnessObservability)
     sequence: int = 0
+    finish_reason: str | None = None
     metadata: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "metadata", dict(self.metadata))
+        if self.event_type == "output_text":
+            if self.output_text is None:
+                raise ValueError("Output events require output_text.")
+            if self.failure is not None:
+                raise ValueError("Output events cannot include failures.")
+            if self.finish_reason is not None:
+                raise ValueError("Output events cannot include finish_reason.")
+        elif self.event_type == "completed":
+            if self.failure is not None:
+                raise ValueError("Completed events cannot include failures.")
+            if self.finish_reason is None:
+                object.__setattr__(self, "finish_reason", "completed")
+        elif self.event_type == "failed":
+            if self.failure is None:
+                raise ValueError("Failed events require a failure.")
+            if self.output_text is not None:
+                raise ValueError("Failed events cannot include output_text.")
+            if self.finish_reason is not None:
+                raise ValueError("Failed events cannot include finish_reason.")
 
 
 class ChatHarnessExecutionError(RuntimeError):
@@ -131,6 +151,45 @@ class ChatHarnessExecutionError(RuntimeError):
     def __init__(self, failure: ChatHarnessFailure):
         self.failure = failure
         super().__init__(failure.message)
+
+
+def collect_harness_events(events: Iterator[ChatHarnessEvent]) -> ChatHarnessResult:
+    output_parts: list[str] = []
+    terminal_result: ChatHarnessResult | None = None
+    seen_terminal_event = False
+    last_sequence = -1
+
+    for event in events:
+        if event.sequence <= last_sequence:
+            raise ValueError("Harness events must use strictly increasing sequence numbers.")
+        if seen_terminal_event:
+            raise ValueError("Harness events cannot continue after a terminal event.")
+
+        last_sequence = event.sequence
+        if event.event_type == "output_text":
+            output_parts.append(event.output_text or "")
+            continue
+
+        if event.event_type == "failed":
+            seen_terminal_event = True
+            failure = event.failure
+            if failure is None:  # pragma: no cover - enforced by ChatHarnessEvent invariants
+                raise ValueError("Failed events require a failure payload.")
+            raise ChatHarnessExecutionError(failure)
+
+        seen_terminal_event = True
+        terminal_output = event.output_text if event.output_text is not None else "".join(output_parts)
+        terminal_result = ChatHarnessResult(
+            output_text=terminal_output,
+            finish_reason=event.finish_reason or "completed",
+            observability=event.observability,
+            metadata=event.metadata,
+        )
+
+    if terminal_result is None:
+        raise ValueError("Harness event streams must end with a completed or failed event.")
+
+    return terminal_result
 
 
 class ChatHarness(ABC):
@@ -149,36 +208,13 @@ class ChatHarness(ABC):
     def context_builder(self) -> "ChatContextBuilder | None":
         return None
 
-    @abstractmethod
     def run(self, request: ChatHarnessRequest) -> ChatHarnessResult:
-        """Execute one harness request and return the normalized result."""
+        """Collect normalized events into the final non-streaming result."""
+        return collect_harness_events(self.run_events(request))
 
+    @abstractmethod
     def run_events(self, request: ChatHarnessRequest) -> Iterator[ChatHarnessEvent]:
-        result = self.run(request)
-        if result.output_text is not None:
-            yield ChatHarnessEvent(
-                event_type="output_text",
-                output_text=result.output_text,
-                observability=result.observability,
-                metadata=result.metadata,
-                sequence=0,
-            )
-        if result.failure is not None:
-            yield ChatHarnessEvent(
-                event_type="failed",
-                failure=result.failure,
-                observability=result.observability,
-                metadata=result.metadata,
-                sequence=1,
-            )
-            return
-        yield ChatHarnessEvent(
-            event_type="completed",
-            output_text=result.output_text,
-            observability=result.observability,
-            metadata=result.metadata,
-            sequence=1,
-        )
+        """Execute one harness request and yield normalized execution events."""
 
 
 class BaseAgent(ChatHarness, ABC):
@@ -207,7 +243,7 @@ class BaseAgent(ChatHarness, ABC):
             model_display_name=self.model_display_name,
         )
 
-    def run(self, request: ChatHarnessRequest) -> ChatHarnessResult:
+    def run_events(self, request: ChatHarnessRequest) -> Iterator[ChatHarnessEvent]:
         try:
             response_text = self.process_message(
                 request.message,
@@ -217,12 +253,20 @@ class BaseAgent(ChatHarness, ABC):
             raise
         except Exception as exc:
             raise ChatHarnessExecutionError(self.normalize_exception(exc)) from exc
-        return ChatHarnessResult(
+        observability = ChatHarnessObservability(
+            model=self.model_display_name,
+            request_id=request.request_id,
+        )
+        yield ChatHarnessEvent(
+            event_type="output_text",
             output_text=response_text,
-            observability=ChatHarnessObservability(
-                model=self.model_display_name,
-                request_id=request.request_id,
-            ),
+            observability=observability,
+            sequence=0,
+        )
+        yield ChatHarnessEvent(
+            event_type="completed",
+            observability=observability,
+            sequence=1,
         )
 
     def normalize_exception(self, exc: Exception) -> ChatHarnessFailure:
