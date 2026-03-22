@@ -46,13 +46,13 @@ Assume Phase 3 keeps tool activity normalized in-memory only, while the canonica
 - [x] Service or route regression test proving the existing send flow still succeeds when a fake harness emits intermediate tool events before completion -> covers AC: `ChatHarness` event collection can tolerate tool activity in the event stream while still producing the same final assistant text result for the current non-streaming app flow.
 
 ## Definition of Done
-- [ ] All acceptance criteria checked off
-- [ ] All new or updated tests pass
-- [ ] `uv run ruff check .` passes
-- [ ] `uv run mypy .` passes
-- [ ] `uv run python -m pytest` passes
-- [ ] `README.md` updated if user-visible behavior changed
-- [ ] E2E or visual checks run when UI behavior changes materially
+- [x] All acceptance criteria checked off
+- [x] All new or updated tests pass
+- [x] `uv run ruff check .` passes
+- [x] `uv run mypy .` passes
+- [x] `uv run python -m pytest` passes
+- [x] `README.md` updated if user-visible behavior changed
+- [x] E2E or visual checks run when UI behavior changes materially
 - [ ] `CHANGELOG.md` updated when the feature ships
 - [ ] Matching phase backlog and `plans/done/PHASE X DONE.md` updated when the feature ships
-- [ ] `AGENTS.md` updated if architecture or contributor guidance changes
+- [x] `AGENTS.md` updated if architecture or contributor guidance changes
