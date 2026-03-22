@@ -2,6 +2,14 @@
 
 ## 2026-03-22
 
+### Ship Phase 3 OpenAI Harness Adapter Migration
+
+- Refactored `agents/openai_agent.py` so the shipped OpenAI runtime behaves as a true harness adapter behind `ChatHarness.run()`, while `agents/chat_harness.py` keeps `BaseAgent` and `process_message()` clearly in compatibility-shim territory.
+- Tightened `services/chat_turns.py` and the Phase 3 route coverage in `tests/test_main_routes.py` so app-layer failure presentation and send-flow tests now depend on normalized harness failures instead of provider-shaped exceptions or legacy monkeypatch paths.
+- Expanded regression coverage in `tests/test_openai_agent.py` and `tests/test_chat_turn_service.py` to lock default OpenAI parity, normalized error translation, and compatibility-only failure alias handling.
+- Updated `README.md` and `AGENTS.md` so contributor guidance describes the shipped OpenAI path as a registry-resolved harness adapter with provider-specific execution and failure translation kept behind the harness boundary.
+- Verification passed with `uv run ruff check .`, `uv run mypy .`, and `uv run python -m pytest` (`189 passed`).
+
 ### Ship Phase 3 Harness Registry, Control Wiring, And Stable Binding
 
 - Added a startup-wired `HarnessRegistry` in `agents/harness_registry.py` and updated `main.py` plus `utils/settings.py` so the shipped app resolves its default harness through registry-backed configuration instead of route-owned provider wiring.

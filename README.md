@@ -21,7 +21,7 @@ Those documents define the long-term direction and maturity phases. This README 
 - In-flight request locking plus persisted request IDs so duplicate submissions are replayed instead of being processed twice.
 - Lightweight loading feedback while switching chats.
 - Inline failure handling for validation, service-unavailable, and transport-error states.
-- OpenAI-backed chat harness implementation (`gpt-5-mini` by default).
+- OpenAI-backed default harness adapter resolved through the normalized `ChatHarness.run()` path (`gpt-5-mini` by default).
 - Startup-wired harness registry plus stable per-chat harness binding (`harness_key` with optional version metadata).
 - SQLite-backed chat storage with per-client chat ownership and transcript persistence across reloads and restarts.
 - Prompt-template-driven system and user prompt construction.
@@ -183,7 +183,7 @@ basic_chat_app/
 │   ├── base_agent.py      # Legacy compatibility shim and harness re-exports
 │   ├── chat_harness.py    # Core ChatHarness contract and normalized types
 │   ├── harness_registry.py # Startup-time harness registry and binding resolution
-│   └── openai_agent.py    # OpenAI-specific harness implementation
+│   └── openai_agent.py    # OpenAI-backed harness adapter behind the contract
 ├── persistence/           # SQLite bootstrap and chat repository code
 ├── services/              # Turn lifecycle and harness-resolution control layer
 ├── static/                # Static assets
@@ -255,11 +255,11 @@ uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 
 ### Adding New Features
 
-1. **New Harness Types**: Implement `ChatHarness` in `agents/chat_harness.py`, register the implementation in `agents/harness_registry.py`, and keep route handlers unaware of provider-specific selection logic. `BaseAgent` remains available only as a compatibility shim for legacy `process_message()` implementations.
+1. **New Harness Types**: Implement `ChatHarness` in `agents/chat_harness.py`, register the implementation in `agents/harness_registry.py`, and keep route handlers unaware of provider-specific selection logic. Provider-backed harnesses should prefer native `run()` implementations; `BaseAgent` remains available only as a compatibility shim for legacy `process_message()` implementations.
 2. **Custom Prompts**: Add new templates in `templates/prompts/<agent_type>/`
 3. **UI Components**: Add new components in `templates/components/`
 
-The application layer should own routing, persistence, idempotent turn lifecycle, and HTML rendering. The small control/service layer should own chat-bound harness resolution. The harness layer should own normalized request/result/failure contracts, observability metadata, prompt assembly, and provider-facing execution.
+The application layer should own routing, persistence, idempotent turn lifecycle, and HTML rendering. The small control/service layer should own chat-bound harness resolution and normalized failure presentation. The harness layer should own normalized request/result/failure contracts, observability metadata, prompt assembly, and provider-facing execution.
 
 ### Configuration
 
@@ -289,7 +289,7 @@ For the default no-auth baseline, keep `CORS_ALLOW_CREDENTIALS=false`. If you en
 
 - Prompts: edit `templates/prompts/openai/` to change the default system or user prompt behavior.
 - Model and runtime settings: use environment variables first, then `utils/settings.py` if you need to change the supported configuration surface.
-- Provider wiring: edit `agents/openai_agent.py` for OpenAI-specific request construction, or add a new implementation in `agents/` behind the `ChatHarness` contract without changing the route layer.
+- Provider wiring: edit `agents/openai_agent.py` for the default OpenAI adapter's request construction and error normalization, or add a new implementation in `agents/` behind the `ChatHarness` contract without changing the route layer.
 - Chat UI behavior: edit `templates/components/chat.html`, `static/js/chat.js`, and `static/css/chat.css`.
 - Visual baselines: update `tests/e2e/snapshots/` only when a deliberate UI change is accepted.
 

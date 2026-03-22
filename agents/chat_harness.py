@@ -154,7 +154,12 @@ class ChatHarness(ABC):
 
 
 class BaseAgent(ChatHarness, ABC):
-    """Compatibility layer for the legacy non-harness agent interface."""
+    """Compatibility layer for legacy process_message()-style agents.
+
+    App-layer code should call the normalized ChatHarness methods. This shim
+    exists so older agent implementations can continue to adapt into that
+    contract while provider-backed harnesses migrate to native run() methods.
+    """
 
     @property
     @abstractmethod

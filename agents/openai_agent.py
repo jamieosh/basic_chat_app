@@ -1,13 +1,14 @@
 import openai
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
+
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionMessageParam,
     ChatCompletionSystemMessageParam,
     ChatCompletionUserMessageParam,
 )
-from pathlib import Path
-from typing import Any
-from collections.abc import Sequence
 
 from .base_agent import (
     BaseAgent,
@@ -28,7 +29,7 @@ class EmptyModelResponseError(RuntimeError):
 
 
 class OpenAIAgent(BaseAgent):
-    """Agent that uses OpenAI's API to process messages"""
+    """OpenAI-backed harness adapter."""
 
     def __init__(
         self,
@@ -39,12 +40,12 @@ class OpenAIAgent(BaseAgent):
         timeout=30.0,
         templates_dir: str | Path | None = None,
     ):
-        """Initialize the OpenAI agent
-        
+        """Initialize the OpenAI-backed harness.
+
         Args:
             api_key: OpenAI API key
             model: OpenAI model to use
-            
+
         Raises:
             FileNotFoundError: If the specified prompt templates don't exist
         """
@@ -55,10 +56,8 @@ class OpenAIAgent(BaseAgent):
         self.timeout = timeout
         self.logger = get_logger("agent.openai")
 
-        # Initialize prompt template manager
         self.prompt_manager = PromptTemplateManager(agent_name="openai", templates_dir=templates_dir)
 
-        # Variables for templates
         self.system_template_vars = {
             "personality": "friendly, concise, and informative",
             "additional_instructions": "",
@@ -68,12 +67,9 @@ class OpenAIAgent(BaseAgent):
             "domain_knowledge": "",
         }
 
-        # Verify that the prompt templates exist
         try:
-            # Check if system prompt exists
             self.prompt_manager.get_system_prompt(self.prompt_name)
-            
-            # Try to get context prompt (this won't raise an error if it doesn't exist)
+
             try:
                 self.prompt_manager.get_context_prompt(self.prompt_name)
             except FileNotFoundError:
@@ -81,17 +77,16 @@ class OpenAIAgent(BaseAgent):
                     "openai_agent.context_prompt_missing prompt=%s fallback=system_only",
                     self.prompt_name,
                 )
-                
             self.logger.info("openai_agent.initialized model=%s prompt=%s", model, self.prompt_name)
         except FileNotFoundError as e:
             self.logger.critical("openai_agent.initialization_failed detail=%s", str(e))
             raise
-    
+
     @property
     def display_name(self):
         """Return the user-friendly display name for the agent"""
         return "AI Chat"
-    
+
     @property
     def model_display_name(self):
         """Return a user-friendly display name for the model"""
@@ -103,8 +98,6 @@ class OpenAIAgent(BaseAgent):
             "gpt-4o-mini": "GPT-4o Mini",
             "gpt-5-mini": "GPT-5 Mini",
         }
-        
-        # Return the display name if it exists, otherwise return the model name
         return model_display_names.get(self.model, self.model)
 
     @property
@@ -118,10 +111,7 @@ class OpenAIAgent(BaseAgent):
 
     def run(self, request: ChatHarnessRequest) -> ChatHarnessResult:
         try:
-            response_text = self.process_message(
-                request.message,
-                request.conversation_history,
-            )
+            response_text = self._run_openai_request(request)
         except ValueError:
             raise
         except Exception as exc:
@@ -194,21 +184,21 @@ class OpenAIAgent(BaseAgent):
                 detail=str(exc),
             )
         return super().normalize_exception(exc)
-    
+
     def process_message(
         self,
         message: str,
         conversation_history: Sequence[ConversationTurn] | None = None,
     ) -> str:
         """
-        Process a message using OpenAI's API
-        
+        Compatibility shim for legacy call sites.
+
         Args:
             message: User message to process
-            
+
         Returns:
             Response from the model
-            
+
         Raises:
             ValueError: If the message is empty or invalid
             FileNotFoundError: If the prompt templates don't exist
@@ -217,62 +207,39 @@ class OpenAIAgent(BaseAgent):
             openai.AuthenticationError: When API key is invalid
             Exception: For other unexpected errors
         """
-        if not message or not message.strip():
+        return self._run_openai_request(
+            ChatHarnessRequest(
+                message=message,
+                conversation_history=tuple(conversation_history or ()),
+            )
+        )
+
+    def _run_openai_request(self, request: ChatHarnessRequest) -> str:
+        if not request.message or not request.message.strip():
             self.logger.error("Empty message received")
             raise ValueError("Message cannot be empty")
-        
+
         try:
-            # Get system prompt content
-            system_content = self.prompt_manager.get_system_prompt(
-                self.prompt_name, **self.system_template_vars
-            )
-            
-            # Try to get context prompt content
-            try:
-                context_content = self.prompt_manager.get_context_prompt(
-                    self.prompt_name, **self.context_template_vars
-                ).strip()
-
-                # Combine message with context if any
-                user_content = f"{context_content}\n\n{message}" if context_content else message
-            except FileNotFoundError:
-                # If context prompt doesn't exist, just use the message
-                user_content = message
-            
-            # Format messages for OpenAI API
-            messages: list[ChatCompletionMessageParam] = [
-                ChatCompletionSystemMessageParam(role="system", content=system_content)
-            ]
-            for turn in conversation_history or ():
-                if turn.role == "user":
-                    messages.append(
-                        ChatCompletionUserMessageParam(role="user", content=turn.content)
-                    )
-                else:
-                    messages.append(
-                        ChatCompletionAssistantMessageParam(role="assistant", content=turn.content)
-                    )
-            messages.append(ChatCompletionUserMessageParam(role="user", content=user_content))
-            
-            # Log which prompt is being used
+            messages = self._build_messages(request)
             self.logger.debug("openai_agent.prompt_selected prompt=%s", self.prompt_name)
-            
+
             try:
-                self.logger.info("openai_agent.request_started model=%s message_chars=%s", self.model, len(message))
-                
-                # Call OpenAI API
-                response = self.client.chat.completions.create(**self._build_completion_request(messages))
-
+                self.logger.info(
+                    "openai_agent.request_started model=%s message_chars=%s",
+                    self.model,
+                    len(request.message),
+                )
+                response = self.client.chat.completions.create(
+                    **self._build_completion_request(messages)
+                )
                 response_text = self._extract_response_text(response)
-
                 self.logger.info(
                     "openai_agent.request_succeeded model=%s response_chars=%s",
                     self.model,
                     len(response_text),
                 )
-                
                 return response_text
-                
+
             except openai.APITimeoutError as e:
                 self.logger.warning("openai_agent.timeout detail=%s", str(e))
                 raise
@@ -280,11 +247,11 @@ class OpenAIAgent(BaseAgent):
             except openai.APIConnectionError as e:
                 self.logger.warning("openai_agent.connection_error detail=%s", str(e))
                 raise
-                
+
             except openai.RateLimitError as e:
                 self.logger.warning("openai_agent.rate_limited detail=%s", str(e))
                 raise
-                
+
             except openai.AuthenticationError as e:
                 self.logger.warning("openai_agent.authentication_failed detail=%s", str(e))
                 raise
@@ -292,18 +259,46 @@ class OpenAIAgent(BaseAgent):
             except openai.BadRequestError as e:
                 self.logger.warning("openai_agent.bad_request detail=%s", str(e))
                 raise
-                
+
             except openai.APIError as e:
                 self.logger.warning("openai_agent.api_error detail=%s", str(e))
                 raise
-                
+
             except Exception as e:
                 self.logger.error("openai_agent.unexpected_error detail=%s", str(e), exc_info=True)
                 raise
-                
+
         except FileNotFoundError as e:
             self.logger.critical("openai_agent.prompt_template_error detail=%s", str(e))
             raise
+
+    def _build_messages(self, request: ChatHarnessRequest) -> list[ChatCompletionMessageParam]:
+        system_content = self.prompt_manager.get_system_prompt(
+            self.prompt_name, **self.system_template_vars
+        )
+        user_content = self._render_user_content(request.message)
+
+        messages: list[ChatCompletionMessageParam] = [
+            ChatCompletionSystemMessageParam(role="system", content=system_content)
+        ]
+        for turn in request.conversation_history:
+            if turn.role == "user":
+                messages.append(ChatCompletionUserMessageParam(role="user", content=turn.content))
+            else:
+                messages.append(
+                    ChatCompletionAssistantMessageParam(role="assistant", content=turn.content)
+                )
+        messages.append(ChatCompletionUserMessageParam(role="user", content=user_content))
+        return messages
+
+    def _render_user_content(self, message: str) -> str:
+        try:
+            context_content = self.prompt_manager.get_context_prompt(
+                self.prompt_name, **self.context_template_vars
+            ).strip()
+        except FileNotFoundError:
+            return message
+        return f"{context_content}\n\n{message}" if context_content else message
 
     def _extract_response_text(self, response) -> str:
         choices = getattr(response, "choices", None)

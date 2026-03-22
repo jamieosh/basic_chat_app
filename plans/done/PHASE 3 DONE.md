@@ -4,6 +4,27 @@ Completed Phase 3 backlog items move here once they are shipped.
 
 ## Completed Items
 
+### P3-03 OpenAI Harness Adapter Migration
+
+Priority: P0
+
+Delivered:
+
+- refactored the shipped OpenAI runtime in `agents/openai_agent.py` so `run()` is the canonical app-facing execution path and provider-specific request construction plus error normalization stay inside the harness adapter
+- clarified `BaseAgent` in `agents/chat_harness.py` as a compatibility shim rather than the default provider-backed implementation path
+- reduced provider-shaped failure aliases in `services/chat_turns.py` to explicit compatibility mapping while keeping normalized harness failure codes primary in app-layer presentation
+- updated route and adapter regression coverage so `tests/test_main_routes.py`, `tests/test_openai_agent.py`, and `tests/test_chat_turn_service.py` exercise normalized `run()` behavior and normalized harness failures instead of legacy `process_message()` monkeypatching
+- refreshed contributor-facing docs so `README.md` and `AGENTS.md` describe the shipped OpenAI path as a registry-resolved harness adapter behind the Phase 3 contract
+
+Acceptance criteria met:
+
+- the default shipped app still behaves like the current OpenAI-backed chat experience
+- route handlers no longer catch OpenAI-specific exceptions directly
+- OpenAI-specific wiring is localized to harness/provider code
+
+What the user sees:
+No major visible UI change, but the default OpenAI-backed path is now a real harness adapter seam rather than a route-adjacent implementation detail.
+
 ### P3-02 Harness Registry, Control Wiring, And Stable Binding
 
 Priority: P0
