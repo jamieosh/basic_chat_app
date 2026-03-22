@@ -1,5 +1,7 @@
 from .base_agent import (
     BaseAgent,
+    ChatContextBuilder,
+    ChatHarnessContext,
     ChatHarness,
     ChatHarnessCapabilities,
     ChatHarnessExecutionError,
@@ -9,6 +11,7 @@ from .base_agent import (
     ChatHarnessObservability,
     ChatHarnessRequest,
     ChatHarnessResult,
+    ContextMessage,
     ConversationTurn,
 )
 from .harness_registry import HarnessRegistry, HarnessResolutionError, build_chat_harness_registry
@@ -16,7 +19,9 @@ from .openai_agent import OpenAIAgent
 
 __all__ = [
     "BaseAgent",
+    "ChatContextBuilder",
     "ChatHarness",
+    "ChatHarnessContext",
     "ChatHarnessCapabilities",
     "ChatHarnessExecutionError",
     "ChatHarnessEvent",
@@ -25,6 +30,7 @@ __all__ = [
     "ChatHarnessObservability",
     "ChatHarnessRequest",
     "ChatHarnessResult",
+    "ContextMessage",
     "ConversationTurn",
     "HarnessRegistry",
     "HarnessResolutionError",
