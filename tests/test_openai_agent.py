@@ -8,6 +8,7 @@ from agents.base_agent import (
     ChatHarnessContext,
     ChatHarnessExecutionError,
     ChatHarnessRequest,
+    ChatHarnessToolCall,
     ContextMessage,
     ConversationTurn,
 )
@@ -74,6 +75,23 @@ def test_capabilities_report_context_builder_support():
     agent = OpenAIAgent(api_key="test-key")
 
     assert agent.capabilities.supports_context_builders is True
+    assert agent.capabilities.supports_tools is False
+    assert agent.available_tools == ()
+
+
+def test_execute_tool_call_defaults_to_no_op_for_openai_harness():
+    agent = OpenAIAgent(api_key="test-key")
+
+    result = agent.execute_tool_call(
+        ChatHarnessRequest(message="Hello there"),
+        ChatHarnessToolCall(
+            call_id="call-1",
+            tool_name="lookup_weather",
+            arguments='{"city":"London"}',
+        ),
+    )
+
+    assert result is None
 
 
 def test_run_uses_configured_prompt_name_temperature_and_timeout(tmp_path):

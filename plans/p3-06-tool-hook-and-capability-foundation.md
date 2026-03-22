@@ -26,8 +26,8 @@ This increment should focus on:
 ## Acceptance Criteria
 - [x] The harness contract exposes normalized tool capability metadata and tool-related event payloads without leaking provider-specific shapes into routes or services.
 - [x] `ChatHarness` event collection can tolerate tool activity in the event stream while still producing the same final assistant text result for the current non-streaming app flow.
-- [ ] Harnesses that do not support tools, including the shipped default OpenAI path and `BaseAgent` compatibility shim, remain simple and keep their current behavior.
-- [ ] The contract includes an explicit extension seam for future tool orchestration, but this slice does not require a built-in tool loop.
+- [x] Harnesses that do not support tools, including the shipped default OpenAI path and `BaseAgent` compatibility shim, remain simple and keep their current behavior.
+- [x] The contract includes an explicit extension seam for future tool orchestration, but this slice does not require a built-in tool loop.
 - [ ] Regression tests cover contract serialization/invariants, collector behavior with tool events, and default-harness backward compatibility.
 
 ## Risks / Assumptions
@@ -35,14 +35,14 @@ Assume Phase 3 keeps tool activity normalized in-memory only, while the canonica
 
 ## Implementation Steps
 - [x] Step 1: Extend the harness contract vocabulary with normalized tool capability, tool-call, and tool-result types plus event invariants that fit the existing serialization-friendly model. — files: `agents/chat_harness.py`, `agents/base_agent.py`, `agents/__init__.py`
-- [ ] Step 2: Introduce a minimal no-op extension seam for future tool orchestration and keep the shipped OpenAI harness explicitly non-tool-aware by default. — files: `agents/chat_harness.py`, `agents/openai_agent.py`
+- [x] Step 2: Introduce a minimal no-op extension seam for future tool orchestration and keep the shipped OpenAI harness explicitly non-tool-aware by default. — files: `agents/chat_harness.py`, `agents/openai_agent.py`
 - [ ] Step 3: Update event collection and control-layer touchpoints so tool events can pass through the current run lifecycle without changing the web contract or persistence model. — files: `agents/chat_harness.py`, `services/chat_turns.py`
 - [ ] Step 4: Add regression coverage proving tool events are normalized, collector-safe, and backward compatible for the default harness and route/service flow. — files: `tests/test_chat_harness_contract.py`, `tests/test_openai_agent.py`, `tests/test_chat_turn_service.py`, `tests/test_main_routes.py`
 
 ## Tests to Add
 - [x] Contract test for JSON-serializable tool capability, tool-call, and tool-result payloads -> covers AC: The harness contract exposes normalized tool capability metadata and tool-related event payloads without leaking provider-specific shapes into routes or services.
 - [x] Collector test proving a mixed stream of text, tool-call, tool-result, and completion events still yields the expected final assistant reply -> covers AC: `ChatHarness` event collection can tolerate tool activity in the event stream while still producing the same final assistant text result for the current non-streaming app flow.
-- [ ] Default-harness test proving the shipped OpenAI adapter still advertises no tool support and keeps the current two-event text/completion behavior -> covers AC: Harnesses that do not support tools, including the shipped default OpenAI path and `BaseAgent` compatibility shim, remain simple and keep their current behavior.
+- [x] Default-harness test proving the shipped OpenAI adapter still advertises no tool support and keeps the current two-event text/completion behavior -> covers AC: Harnesses that do not support tools, including the shipped default OpenAI path and `BaseAgent` compatibility shim, remain simple and keep their current behavior.
 - [ ] Service or route regression test proving the existing send flow still succeeds when a fake harness emits intermediate tool events before completion -> covers AC: `ChatHarness` event collection can tolerate tool activity in the event stream while still producing the same final assistant text result for the current non-streaming app flow.
 
 ## Definition of Done

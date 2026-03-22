@@ -115,7 +115,12 @@ class OpenAIAgent(BaseAgent):
 
     @property
     def capabilities(self) -> ChatHarnessCapabilities:
-        return ChatHarnessCapabilities(supports_context_builders=True)
+        return ChatHarnessCapabilities(
+            supports_context_builders=True,
+            supports_tool_call_events=False,
+            supports_tool_result_events=False,
+            supports_tool_orchestration=False,
+        )
 
     @property
     def context_builder(self) -> ChatContextBuilder:

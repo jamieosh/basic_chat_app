@@ -289,6 +289,14 @@ class ChatHarness(ABC):
     def available_tools(self) -> tuple[ChatHarnessTool, ...]:
         return self.capabilities.available_tools
 
+    def execute_tool_call(
+        self,
+        request: ChatHarnessRequest,
+        tool_call: ChatHarnessToolCall,
+    ) -> ChatHarnessToolResult | None:
+        """Optional hook for future harness-owned tool orchestration."""
+        return None
+
     def run(self, request: ChatHarnessRequest) -> ChatHarnessResult:
         """Collect normalized events into the final non-streaming result."""
         return collect_harness_events(self.run_events(request))
