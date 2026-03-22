@@ -20,7 +20,7 @@ FailureCode = Literal[
     "unexpected_error",
 ]
 
-EventType = Literal["output_text", "completed", "failed"]
+EventType = Literal["output_text", "tool_call", "tool_result", "completed", "failed"]
 ContextMessageRole = Literal["system", "user", "assistant"]
 
 
@@ -58,8 +58,56 @@ class ChatHarnessIdentity:
 @dataclass(frozen=True)
 class ChatHarnessCapabilities:
     supports_streaming: bool = False
-    supports_tools: bool = False
     supports_context_builders: bool = False
+    supports_tool_call_events: bool = False
+    supports_tool_result_events: bool = False
+    supports_tool_orchestration: bool = False
+    available_tools: tuple["ChatHarnessTool", ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "available_tools", tuple(self.available_tools))
+
+    @property
+    def supports_tools(self) -> bool:
+        return (
+            self.supports_tool_call_events
+            or self.supports_tool_result_events
+            or self.supports_tool_orchestration
+            or bool(self.available_tools)
+        )
+
+
+@dataclass(frozen=True)
+class ChatHarnessTool:
+    name: str
+    description: str | None = None
+    metadata: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "metadata", dict(self.metadata))
+
+
+@dataclass(frozen=True)
+class ChatHarnessToolCall:
+    call_id: str
+    tool_name: str
+    arguments: str
+    metadata: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "metadata", dict(self.metadata))
+
+
+@dataclass(frozen=True)
+class ChatHarnessToolResult:
+    call_id: str
+    tool_name: str
+    output: str
+    is_error: bool = False
+    metadata: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "metadata", dict(self.metadata))
 
 
 @dataclass(frozen=True)
@@ -116,6 +164,8 @@ class ChatHarnessResult:
 class ChatHarnessEvent:
     event_type: EventType
     output_text: str | None = None
+    tool_call: ChatHarnessToolCall | None = None
+    tool_result: ChatHarnessToolResult | None = None
     failure: ChatHarnessFailure | None = None
     observability: ChatHarnessObservability = field(default_factory=ChatHarnessObservability)
     sequence: int = 0
@@ -127,13 +177,35 @@ class ChatHarnessEvent:
         if self.event_type == "output_text":
             if self.output_text is None:
                 raise ValueError("Output events require output_text.")
+            if self.tool_call is not None or self.tool_result is not None:
+                raise ValueError("Output events cannot include tool payloads.")
             if self.failure is not None:
                 raise ValueError("Output events cannot include failures.")
             if self.finish_reason is not None:
                 raise ValueError("Output events cannot include finish_reason.")
+        elif self.event_type == "tool_call":
+            if self.tool_call is None:
+                raise ValueError("Tool-call events require tool_call.")
+            if self.output_text is not None or self.tool_result is not None:
+                raise ValueError("Tool-call events cannot include output_text or tool_result.")
+            if self.failure is not None:
+                raise ValueError("Tool-call events cannot include failures.")
+            if self.finish_reason is not None:
+                raise ValueError("Tool-call events cannot include finish_reason.")
+        elif self.event_type == "tool_result":
+            if self.tool_result is None:
+                raise ValueError("Tool-result events require tool_result.")
+            if self.output_text is not None or self.tool_call is not None:
+                raise ValueError("Tool-result events cannot include output_text or tool_call.")
+            if self.failure is not None:
+                raise ValueError("Tool-result events cannot include failures.")
+            if self.finish_reason is not None:
+                raise ValueError("Tool-result events cannot include finish_reason.")
         elif self.event_type == "completed":
             if self.failure is not None:
                 raise ValueError("Completed events cannot include failures.")
+            if self.tool_call is not None or self.tool_result is not None:
+                raise ValueError("Completed events cannot include tool payloads.")
             if self.finish_reason is None:
                 object.__setattr__(self, "finish_reason", "completed")
         elif self.event_type == "failed":
@@ -141,6 +213,8 @@ class ChatHarnessEvent:
                 raise ValueError("Failed events require a failure.")
             if self.output_text is not None:
                 raise ValueError("Failed events cannot include output_text.")
+            if self.tool_call is not None or self.tool_result is not None:
+                raise ValueError("Failed events cannot include tool payloads.")
             if self.finish_reason is not None:
                 raise ValueError("Failed events cannot include finish_reason.")
 
@@ -168,6 +242,9 @@ def collect_harness_events(events: Iterator[ChatHarnessEvent]) -> ChatHarnessRes
         last_sequence = event.sequence
         if event.event_type == "output_text":
             output_parts.append(event.output_text or "")
+            continue
+
+        if event.event_type in {"tool_call", "tool_result"}:
             continue
 
         if event.event_type == "failed":
@@ -207,6 +284,10 @@ class ChatHarness(ABC):
     @property
     def context_builder(self) -> "ChatContextBuilder | None":
         return None
+
+    @property
+    def available_tools(self) -> tuple[ChatHarnessTool, ...]:
+        return self.capabilities.available_tools
 
     def run(self, request: ChatHarnessRequest) -> ChatHarnessResult:
         """Collect normalized events into the final non-streaming result."""
