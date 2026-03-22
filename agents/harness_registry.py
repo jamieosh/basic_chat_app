@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .anthropic_agent import AnthropicAgent
 from .chat_harness import ChatHarness
 from .openai_agent import OpenAIAgent
 
@@ -58,7 +59,18 @@ def build_chat_harness_registry(settings: RuntimeSettings) -> HarnessRegistry:
         temperature=settings.openai_temperature,
         timeout=settings.openai_timeout_seconds,
     )
+    anthropic_harness = AnthropicAgent(
+        api_key=settings.anthropic_api_key or "",
+        model=settings.anthropic_model,
+        prompt_name=settings.anthropic_prompt_name,
+        temperature=settings.anthropic_temperature,
+        timeout=settings.anthropic_timeout_seconds,
+        max_tokens=settings.anthropic_max_tokens,
+    )
     return HarnessRegistry(
-        {openai_harness.identity.key: openai_harness},
+        {
+            openai_harness.identity.key: openai_harness,
+            anthropic_harness.identity.key: anthropic_harness,
+        },
         default_key=settings.default_harness_key,
     )

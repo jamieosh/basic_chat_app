@@ -119,6 +119,32 @@ def test_chat_turn_service_uses_registry_default_binding_for_new_chat(tmp_path):
     assert service.resolve_harness_for_turn_state(start_result.turn_request_state).identity.key == "fake-default"
 
 
+def test_chat_turn_service_uses_anthropic_default_binding_for_new_chat(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    registry = HarnessRegistry(
+        {
+            "openai": FakeHarness("openai", provider_name="openai"),
+            "anthropic": FakeHarness("anthropic", provider_name="anthropic"),
+        },
+        default_key="anthropic",
+    )
+    service = ChatTurnService(repository, registry)
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-anthropic-default-binding",
+        chat_session_id=None,
+        message="Hello",
+    )
+
+    assert start_result.outcome == "started"
+    assert start_result.chat_session is not None
+    assert start_result.chat_session.harness_key == "anthropic"
+    assert service.resolve_harness_for_turn_state(start_result.turn_request_state).identity.key == "anthropic"
+
+
 def test_chat_turn_service_builds_harness_request_from_canonical_prior_messages(tmp_path):
     db_path = tmp_path / "chat.db"
     bootstrap_database(db_path)
@@ -764,6 +790,44 @@ def test_chat_turn_service_resolves_existing_chat_binding_from_persisted_chat(tm
     assert start_result.outcome == "started"
     assert start_result.turn_request_state is not None
     assert service.resolve_harness_for_turn_state(start_result.turn_request_state).identity.key == "fake-alt"
+
+
+def test_chat_turn_service_preserves_persisted_binding_when_default_harness_changes(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    registry = HarnessRegistry(
+        {
+            "openai": FakeHarness("openai", provider_name="openai"),
+            "anthropic": FakeHarness("anthropic", provider_name="anthropic"),
+        },
+        default_key="anthropic",
+    )
+    service = ChatTurnService(repository, registry)
+    chat = repository.create_chat(
+        client_id="client-a",
+        title="Chat 1",
+        harness_key="openai",
+    )
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-existing-openai-binding",
+        chat_session_id=chat.id,
+        message="Hello",
+    )
+    execution_result = service.execute_started_turn(
+        client_id="client-a",
+        request_id="request-existing-openai-binding",
+        start_result=start_result,
+        message="Hello",
+    )
+
+    assert start_result.turn_request_state is not None
+    assert service.resolve_harness_for_turn_state(start_result.turn_request_state).identity.key == "openai"
+    assert execution_result.outcome == "succeeded"
+    assert execution_result.response_harness.identity.key == "openai"
+    assert execution_result.output_text == "openai:Hello"
 
 
 def test_chat_turn_service_raises_for_unknown_persisted_harness_binding(tmp_path):

@@ -27,8 +27,8 @@ Those documents define the long-term direction and maturity phases. This README 
 - In-flight request locking plus persisted request IDs so duplicate submissions are replayed instead of being processed twice.
 - Lightweight loading feedback while switching chats.
 - Inline failure handling for validation, service-unavailable, and transport-error states.
-- OpenAI-backed default harness adapter resolved through the normalized event-capable `ChatHarness` surface, with `run_events()` canonical and `run()` acting as the non-streaming collector (`gpt-5-mini` by default).
-- One registry-backed extension path for alternate harnesses, with the shipped OpenAI adapter acting as the default baseline rather than the only supported architecture.
+- OpenAI-backed default harness adapter plus a shipped Anthropic proof adapter, both resolved through the normalized event-capable `ChatHarness` surface, with `run_events()` canonical and `run()` acting as the non-streaming collector.
+- Backend-configured harness selection for new chats through `DEFAULT_CHAT_HARNESS_KEY`, with OpenAI remaining the default baseline and Anthropic available as the shipped alternative proof path.
 - Normalized tool-call and tool-result event vocabulary plus an optional harness-owned `execute_tool_call()` seam for future tool experiments, while the shipped app still persists only user and assistant transcript turns.
 - Startup-wired harness registry plus stable per-chat harness binding (`harness_key` with optional version metadata).
 - A small `services/chat_turns.py` control layer that owns normalized harness execution, failure finalization, replay coordination, and observability shaping before the route renders the HTMX response.
@@ -111,9 +111,16 @@ uv sync
 cp .env.example .env
 ```
 
-4. Add your OpenAI API key to `.env`:
+4. Configure the harness for new chats in `.env`. OpenAI remains the default:
 ```dotenv
+DEFAULT_CHAT_HARNESS_KEY=openai
 OPENAI_API_KEY=your_api_key_here
+```
+
+Or switch the default for new chats to Anthropic:
+```dotenv
+DEFAULT_CHAT_HARNESS_KEY=anthropic
+ANTHROPIC_API_KEY=your_api_key_here
 ```
 
 5. Optional: override the local SQLite path if you do not want the default `data/chat.db`:
@@ -121,9 +128,10 @@ OPENAI_API_KEY=your_api_key_here
 CHAT_DATABASE_PATH=data/chat.db
 ```
 
-6. Optional: set the default shipped harness key. The current repository ships only `openai`, so the default should normally stay unchanged:
+6. Optional: customize the selected provider defaults:
 ```dotenv
-DEFAULT_CHAT_HARNESS_KEY=openai
+OPENAI_MODEL=gpt-5-mini
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
 ```
 
 7. Run the application:
@@ -141,6 +149,7 @@ The default database directory is created automatically on startup when needed.
 - Python 3.11+
 - FastAPI
 - HTMX
+- Anthropic Python Client
 - OpenAI Python Client
 - Jinja2
 - python-dotenv
@@ -190,6 +199,7 @@ Forks that move beyond trusted local or internal use should plan explicit securi
 ```
 basic_chat_app/
 ├── agents/                 # Chat harness contracts and implementations
+│   ├── anthropic_agent.py  # Anthropic-backed harness adapter behind the contract
 │   ├── base_agent.py      # Legacy compatibility shim and harness re-exports
 │   ├── chat_harness.py    # Core ChatHarness contract and normalized types
 │   ├── context_builders.py # Harness-owned context assembly helpers
@@ -234,6 +244,7 @@ Test suite layout:
 - `tests/test_chat_repository.py`: repository persistence, visibility, and turn-request lifecycle coverage.
 - `tests/test_chat_turn_service.py`: idempotency and conflict behavior through the service boundary.
 - `tests/test_main_routes.py`: route-level request, replay, lifecycle, and error rendering behavior.
+- `tests/test_anthropic_agent.py`: Anthropic harness request construction, normalization, and input validation.
 - `tests/e2e/test_chat_smoke.py`: Playwright coverage for the browser shell, send flow, restore behavior, and visual baselines.
 
 Run the frontend smoke test only:
@@ -274,7 +285,7 @@ Use this path when you want to add a provider-backed harness or a fake harness f
 4. Leave `main.py` focused on HTTP validation and HTMX rendering. The application layer should keep owning routing, persistence, idempotent turn lifecycle, and HTML rendering. The small control/service layer in `services/chat_turns.py` should keep owning chat-bound harness resolution, normalized execution, and failure presentation.
 5. Add or update coverage in `tests/test_chat_harness_contract.py`, `tests/test_harness_registry.py`, `tests/test_chat_turn_service.py`, and `tests/test_main_routes.py` so alternate harnesses are proven without route-level or OpenAI-specific coupling.
 
-The shipped OpenAI adapter in `agents/openai_agent.py` is the default baseline for this repository, not the required shape for every future harness.
+The shipped OpenAI adapter in `agents/openai_agent.py` remains the default baseline for this repository. The shipped Anthropic adapter in `agents/anthropic_agent.py` is the Phase 3 proof that the harness boundary supports a materially different provider shape without route-level branching.
 
 ### Other Extension Seams
 
@@ -288,15 +299,22 @@ The shipped OpenAI adapter in `agents/openai_agent.py` is the default baseline f
 - Prompt templates can be customized in `templates/prompts/`
 - UI styling can be adjusted in `static/css/chat.css`
 - Runtime configuration is environment-driven through `.env` or process env vars.
-- Harness selection defaults are environment-driven through `DEFAULT_CHAT_HARNESS_KEY`, while persisted chats keep their existing binding after creation.
+- Harness selection defaults are environment-driven through `DEFAULT_CHAT_HARNESS_KEY`, while persisted chats keep their existing binding after creation. Changing the default affects only newly created chats.
 
 Supported runtime environment variables:
 
-- `OPENAI_API_KEY`: required API key for the OpenAI client.
+- `DEFAULT_CHAT_HARNESS_KEY`: selects the backend harness for newly created chats. Supported shipped values: `openai`, `anthropic`. Default: `openai`.
+- `OPENAI_API_KEY`: required when `DEFAULT_CHAT_HARNESS_KEY=openai`.
 - `OPENAI_MODEL`: optional model name. Default: `gpt-5-mini`.
 - `OPENAI_PROMPT_NAME`: optional prompt template suffix. Default: `default`.
 - `OPENAI_TEMPERATURE`: optional model temperature from `0.0` to `2.0`. Default: `1.0`.
 - `OPENAI_TIMEOUT_SECONDS`: optional OpenAI request timeout. Default: `30`.
+- `ANTHROPIC_API_KEY`: required when `DEFAULT_CHAT_HARNESS_KEY=anthropic`.
+- `ANTHROPIC_MODEL`: optional Anthropic model name. Default: `claude-sonnet-4-20250514`.
+- `ANTHROPIC_PROMPT_NAME`: optional prompt template suffix. Default: `default`.
+- `ANTHROPIC_TEMPERATURE`: optional Anthropic temperature from `0.0` to `1.0`. Default: `1.0`.
+- `ANTHROPIC_TIMEOUT_SECONDS`: optional Anthropic request timeout. Default: `30`.
+- `ANTHROPIC_MAX_TOKENS`: optional Anthropic max output tokens. Default: `1024`.
 - `CHAT_DATABASE_PATH`: optional SQLite database path. Default: `data/chat.db`.
 - `CORS_ALLOWED_ORIGINS`: comma-separated allowed origins. Default: `*`.
 - `CORS_ALLOW_CREDENTIALS`: enables credentialed CORS requests. Default: `false`.
@@ -308,9 +326,9 @@ For the default no-auth baseline, keep `CORS_ALLOW_CREDENTIALS=false`. If you en
 
 ### Safe Customization Points
 
-- Prompts: edit `templates/prompts/openai/` to change the shipped OpenAI harness behavior, or add a new prompt directory for a new harness.
+- Prompts: edit `templates/prompts/openai/` or `templates/prompts/anthropic/` to change a shipped harness behavior, or add a new prompt directory for a new harness.
 - Model and runtime settings: use environment variables first, then `utils/settings.py` if you need to change the supported configuration surface.
-- Harness wiring: edit `agents/openai_agent.py` only for the shipped OpenAI adapter, or add a new implementation in `agents/` plus a registry entry in `agents/harness_registry.py` without changing the route layer.
+- Harness wiring: edit `agents/openai_agent.py` or `agents/anthropic_agent.py` only for the shipped adapters, or add a new implementation in `agents/` plus a registry entry in `agents/harness_registry.py` without changing the route layer.
 - Chat UI behavior: edit `templates/components/chat.html`, `static/js/chat.js`, and `static/css/chat.css`.
 - Visual baselines: update `tests/e2e/snapshots/` only when a deliberate UI change is accepted.
 
