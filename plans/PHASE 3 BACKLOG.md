@@ -14,29 +14,6 @@ The rest of this backlog assumes `ChatHarness`, normalized harness types, and th
 
 ## Proposed Items
 
-### P3-03 OpenAI Harness Adapter Migration
-
-Priority: P0
-
-Problem:
-The current OpenAI implementation is still effectively the app harness. Phase 3 needs that implementation moved behind the new harness contract before any provider-swapping story is credible.
-
-Deliver:
-
-- migrate the existing OpenAI logic behind the Phase 3 harness contract
-- normalize OpenAI errors into harness-level failure categories
-- keep current prompt-template behavior working through the new harness wiring
-- preserve the current default request and response behavior for users
-
-Acceptance criteria:
-
-- the default shipped app still behaves like the current OpenAI-backed chat experience
-- route handlers no longer catch OpenAI-specific exceptions directly
-- OpenAI-specific wiring is localized to harness/provider code
-
-What the user sees:
-The default chat behavior should feel the same, but the implementation becomes much easier to swap or extend.
-
 ### P3-04 Context Builders And Harness-Owned Memory Assembly
 
 Priority: P1
@@ -191,8 +168,7 @@ No required UI change, but Phase 3 is now validated against a real alternative p
 
 ## Sequencing Notes
 
-- `P3-01` is already complete groundwork for the rest of Phase 3.
-- `P3-02` and `P3-03` establish the control wiring and default-harness migration on top of that groundwork.
+- `P3-01`, `P3-02`, and `P3-03` are complete groundwork for the rest of Phase 3.
 - `P3-04` and `P3-05` make the harness actually useful for memory and streaming evolution.
 - `P3-06` should stay intentionally light unless a concrete tool use case appears.
 - `P3-07` and `P3-08` should tighten the app-layer cleanup and documentation before the final proof step.
