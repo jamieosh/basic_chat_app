@@ -84,10 +84,12 @@ Current stage:
 - Shipped backlog items move to `plans/done/PHASE 3 DONE.md`.
 - Feature implementation plans should live at `plans/<slug>.md` on a matching `codex/<slug>` branch.
 - The local helper skills in `.agents/skills/` assume this workflow:
+  - `phase-start`: open the next delivery phase by creating the matching `plans/PHASE X DESIGN.md` and `plans/PHASE X BACKLOG.md` after validating no earlier phase is still active
   - `feature-start`: choose/refine a backlog slice and write `plans/<slug>.md`
   - `feature-build`: implement the checked plan incrementally on `codex/<slug>`
   - `feature-ship`: update docs/backlog/changelog, verify, merge to `main`, and clean up
   - `feature-abandon`: safely discard an in-progress `codex/<slug>` branch after confirmation
+  - `phase-complete`: close an active phase only when its backlog is empty, move the design doc into `plans/done/`, remove the active backlog, and mark the phase completed in `plans/PHASES.md`
 - Do not overwrite existing user edits in `plans/`, `CHANGELOG.md`, or other shared docs just because a skill expects to update them.
 
 ## Run Locally
