@@ -44,6 +44,24 @@ def test_missing_context_prompt_raises_file_not_found():
         manager.get_context_prompt("does_not_exist")
 
 
+def test_optional_context_prompt_returns_none_when_missing():
+    manager = PromptTemplateManager(agent_name="openai")
+
+    assert manager.get_optional_context_prompt("does_not_exist") is None
+
+
+def test_optional_context_prompt_renders_when_present():
+    manager = PromptTemplateManager(agent_name="openai")
+
+    rendered = manager.get_optional_context_prompt(
+        "default",
+        domain_knowledge="Cats are mammals.",
+    )
+
+    assert rendered is not None
+    assert "Cats are mammals." in rendered
+
+
 def test_system_prompt_surfaces_template_render_errors(tmp_path):
     templates_dir = tmp_path / "templates" / "prompts"
     agent_dir = templates_dir / "openai"

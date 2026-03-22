@@ -123,3 +123,10 @@ class PromptTemplateManager:
             raise FileNotFoundError(
                 f"Context prompt '{prompt_name}' not found for agent type '{self.agent_name}'"
             ) from e
+
+    def get_optional_context_prompt(self, prompt_name="default", **variables) -> str | None:
+        """Return a rendered context prompt when present, otherwise None."""
+        try:
+            return self.get_context_prompt(prompt_name, **variables)
+        except FileNotFoundError:
+            return None
