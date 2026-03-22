@@ -6,6 +6,8 @@ from agents.chat_harness import (
     ChatHarnessFailure,
     ChatHarnessIdentity,
     ChatHarnessRequest,
+    ChatHarnessToolCall,
+    ChatHarnessToolResult,
     ConversationTurn,
 )
 from agents.harness_registry import HarnessRegistry, HarnessResolutionError
@@ -202,6 +204,59 @@ def test_chat_turn_service_execute_harness_request_collects_multi_event_output(t
 
     result = service.execute_harness_request(
         harness=MultiEventHarness("fake"),
+        harness_request=ChatHarnessRequest(message="ignored"),
+    )
+
+    assert result.output_text == "Hello there"
+    assert result.metadata == {"surface": "events"}
+
+
+def test_chat_turn_service_execute_harness_request_ignores_tool_events_between_text_chunks(
+    tmp_path,
+):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    service = ChatTurnService(repository)
+
+    class ToolEventHarness(FakeHarness):
+        def run_events(self, request: ChatHarnessRequest):
+            yield ChatHarnessEvent(
+                event_type="output_text",
+                output_text="Hello",
+                sequence=0,
+            )
+            yield ChatHarnessEvent(
+                event_type="tool_call",
+                tool_call=ChatHarnessToolCall(
+                    call_id="call-1",
+                    tool_name="lookup_weather",
+                    arguments='{"city":"London"}',
+                ),
+                sequence=1,
+            )
+            yield ChatHarnessEvent(
+                event_type="tool_result",
+                tool_result=ChatHarnessToolResult(
+                    call_id="call-1",
+                    tool_name="lookup_weather",
+                    output='{"forecast":"Rain"}',
+                ),
+                sequence=2,
+            )
+            yield ChatHarnessEvent(
+                event_type="output_text",
+                output_text=" there",
+                sequence=3,
+            )
+            yield ChatHarnessEvent(
+                event_type="completed",
+                sequence=4,
+                metadata={"surface": "events"},
+            )
+
+    result = service.execute_harness_request(
+        harness=ToolEventHarness("fake"),
         harness_request=ChatHarnessRequest(message="ignored"),
     )
 

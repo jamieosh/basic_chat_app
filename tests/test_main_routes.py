@@ -15,6 +15,8 @@ from agents.base_agent import (
     ChatHarnessFailure,
     ChatHarnessIdentity,
     ChatHarnessRequest,
+    ChatHarnessToolCall,
+    ChatHarnessToolResult,
     ConversationTurn,
 )
 from agents.harness_registry import HarnessRegistry
@@ -478,6 +480,58 @@ def test_send_message_collects_multiple_output_events_into_one_persisted_reply(c
 
     assert response.status_code == 200
     assert "Hello from test" in response.text
+    chat_session_id = _extract_chat_session_id(response.text)
+    repository = client.app.state.chat_repository
+    client_id = client.cookies.get(CLIENT_ID_COOKIE_NAME)
+    messages = repository.list_messages_for_chat(
+        chat_session_id=chat_session_id,
+        client_id=client_id,
+    )
+    assert [message.content for message in messages] == ["Hi", "Hello from test"]
+
+
+def test_send_message_ignores_tool_events_and_persists_only_text_output(client, monkeypatch):
+    def tool_event_reply(_request):
+        yield ChatHarnessEvent(
+            event_type="output_text",
+            output_text="Hello",
+            sequence=0,
+        )
+        yield ChatHarnessEvent(
+            event_type="tool_call",
+            tool_call=ChatHarnessToolCall(
+                call_id="call-1",
+                tool_name="lookup_weather",
+                arguments='{"city":"London"}',
+            ),
+            sequence=1,
+        )
+        yield ChatHarnessEvent(
+            event_type="tool_result",
+            tool_result=ChatHarnessToolResult(
+                call_id="call-1",
+                tool_name="lookup_weather",
+                output='{"forecast":"Rain"}',
+            ),
+            sequence=2,
+        )
+        yield ChatHarnessEvent(
+            event_type="output_text",
+            output_text=" from test",
+            sequence=3,
+        )
+        yield ChatHarnessEvent(
+            event_type="completed",
+            sequence=4,
+        )
+
+    monkeypatch.setattr(client.app.state.chat_harness, "run_events", tool_event_reply)
+
+    response = _send_message(client, {"message": "Hi"})
+
+    assert response.status_code == 200
+    assert "Hello from test" in response.text
+    assert "lookup_weather" not in response.text
     chat_session_id = _extract_chat_session_id(response.text)
     repository = client.app.state.chat_repository
     client_id = client.cookies.get(CLIENT_ID_COOKIE_NAME)
