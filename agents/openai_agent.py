@@ -15,12 +15,12 @@ from .base_agent import (
     ChatContextBuilder,
     ChatHarnessCapabilities,
     ChatHarnessContext,
+    ChatHarnessEvent,
     ChatHarnessExecutionError,
     ChatHarnessFailure,
     ChatHarnessIdentity,
     ChatHarnessObservability,
     ChatHarnessRequest,
-    ChatHarnessResult,
     ConversationTurn,
 )
 from .context_builders import DefaultContextBuilder
@@ -131,7 +131,7 @@ class OpenAIAgent(BaseAgent):
             builder_name="openai_default",
         )
 
-    def run(self, request: ChatHarnessRequest) -> ChatHarnessResult:
+    def run_events(self, request: ChatHarnessRequest):
         try:
             context = self._build_context(request)
             response_text = self._run_openai_request(request, context)
@@ -139,23 +139,33 @@ class OpenAIAgent(BaseAgent):
             raise
         except Exception as exc:
             raise ChatHarnessExecutionError(self.normalize_exception(exc)) from exc
-        return ChatHarnessResult(
-            output_text=response_text,
-            observability=ChatHarnessObservability(
-                model=self.model,
-                provider="openai",
-                request_id=request.request_id,
-                tags={
-                    "harness_key": self.identity.key,
-                    "context_builder": context.metadata.get("builder", "unknown"),
-                    "prompt_name": self.prompt_name,
-                },
-            ),
-            metadata={
+        observability = ChatHarnessObservability(
+            model=self.model,
+            provider="openai",
+            request_id=request.request_id,
+            tags={
+                "harness_key": self.identity.key,
                 "context_builder": context.metadata.get("builder", "unknown"),
-                "model_display_name": self.model_display_name,
                 "prompt_name": self.prompt_name,
             },
+        )
+        metadata = {
+            "context_builder": context.metadata.get("builder", "unknown"),
+            "model_display_name": self.model_display_name,
+            "prompt_name": self.prompt_name,
+        }
+        yield ChatHarnessEvent(
+            event_type="output_text",
+            output_text=response_text,
+            observability=observability,
+            sequence=0,
+            metadata=metadata,
+        )
+        yield ChatHarnessEvent(
+            event_type="completed",
+            observability=observability,
+            sequence=1,
+            metadata=metadata,
         )
 
     def normalize_exception(self, exc: Exception) -> ChatHarnessFailure:
