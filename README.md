@@ -4,6 +4,12 @@ A lightweight FastAPI + HTMX project for quickly experimenting with LLM chat beh
 
 This repository is intentionally a workbench, not a full-featured production chat platform. It is designed to be usable out of the box while staying easy to fork and extend.
 
+## Screenshot
+
+Example desktop chat session:
+
+![Example desktop chat session](docs/images/chat-workbench-example.png)
+
 ## Vision And Roadmap
 
 - Vision charter: `plans/VISION.md`
