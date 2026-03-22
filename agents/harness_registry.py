@@ -38,6 +38,14 @@ class HarnessRegistry:
             raise HarnessResolutionError(f"Unknown chat harness key '{key}'.")
         return harness
 
+    def resolve_binding(self, key: str, version: str | None = None) -> ChatHarness:
+        harness = self.require(key)
+        if version is not None and harness.identity.version != version:
+            raise HarnessResolutionError(
+                f"Chat harness '{key}' does not match version '{version}'."
+            )
+        return harness
+
     def default(self) -> ChatHarness:
         return self.require(self._default_key)
 

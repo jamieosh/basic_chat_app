@@ -649,9 +649,12 @@ async def lifespan(app: FastAPI):
         raise_for_failed_startup_checks(startup_checks)
         bootstrap_database(settings.chat_database_path)
         app.state.chat_repository = ChatRepository(settings.chat_database_path)
-        app.state.chat_turn_service = ChatTurnService(app.state.chat_repository)
         app.state.chat_harness_registry = build_chat_harness_registry(settings)
         app.state.chat_harness = app.state.chat_harness_registry.default()
+        app.state.chat_turn_service = ChatTurnService(
+            app.state.chat_repository,
+            app.state.chat_harness_registry,
+        )
     except StartupDiagnosticsError as exc:
         for failure in exc.failures:
             logger.critical("startup.failed check=%s detail=%s", failure.name, failure.detail)
@@ -1004,9 +1007,9 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 should_set_cookie=should_set_client_cookie,
             )
 
-        chat_harness = _get_chat_harness(request)
         repository = request.app.state.chat_repository
         chat_turn_service = _get_chat_turn_service(request)
+        chat_harness = chat_turn_service.default_harness()
         active_chat_session_id: int | None = None
         resolved_request_id: str | None = None
 
@@ -1045,6 +1048,9 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             if start_result.turn_request_state is None:  # pragma: no cover - defensive
                 raise RuntimeError("Turn request start result is missing its state.")
 
+            chat_harness = chat_turn_service.resolve_harness_for_turn_state(
+                start_result.turn_request_state
+            )
             active_chat_session_id = start_result.turn_request_state.turn_request.chat_session_id
             if start_result.outcome == "duplicate":
                 logger.info(
@@ -1178,6 +1184,39 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                     client_id=client_id,
                     timestamp=timestamp,
                     turn_request_state=turn_request_state,
+                ),
+                client_id=client_id,
+                should_set_cookie=should_set_client_cookie,
+            )
+
+        except HarnessResolutionError as exc:
+            _log_known_chat_error("chat.harness_unavailable", exc)
+            if resolved_request_id is not None:
+                turn_request_state = await asyncio.to_thread(
+                    chat_turn_service.fail_turn,
+                    client_id=client_id,
+                    request_id=resolved_request_id,
+                    failure_code="harness_unavailable",
+                )
+                return _finalize_response_with_client_cookie(
+                    _render_turn_request_state_response(
+                        request,
+                        chat_harness=chat_turn_service.default_harness(),
+                        repository=repository,
+                        client_id=client_id,
+                        timestamp=timestamp,
+                        turn_request_state=turn_request_state,
+                    ),
+                    client_id=client_id,
+                    should_set_cookie=should_set_client_cookie,
+                )
+            return _finalize_response_with_client_cookie(
+                _render_error_response(
+                    "Service Unavailable",
+                    "The configured chat harness is not available. Please try again later.",
+                    timestamp,
+                    503,
+                    chat_session_id=active_chat_session_id,
                 ),
                 client_id=client_id,
                 should_set_cookie=should_set_client_cookie,

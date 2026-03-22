@@ -17,7 +17,9 @@ from agents.base_agent import (
     ChatHarnessIdentity,
     ConversationTurn,
 )
+from agents.harness_registry import HarnessRegistry
 from agents.openai_agent import EmptyModelResponseError
+from services import ChatTurnService
 from utils import diagnostics
 from utils.client_identity import CLIENT_ID_COOKIE_MAX_AGE_SECONDS, CLIENT_ID_COOKIE_NAME
 from utils.diagnostics import StartupDiagnosticsError
@@ -1015,6 +1017,84 @@ def test_send_message_offloads_blocking_harness_call_from_event_loop(client, mon
     assert captured["request"].message == "Hi"
     assert captured["request"].conversation_history == ()
     assert "Hello from thread" in response.text
+
+
+def test_send_message_uses_chat_bound_harness_for_follow_up_send(client, monkeypatch):
+    class FakeAltHarness:
+        @property
+        def identity(self):
+            return ChatHarnessIdentity(
+                key="fake-alt",
+                display_name="Alt Bot",
+                model_display_name="Alt Model",
+            )
+
+        def run(self, request):
+            return types.SimpleNamespace(output_text=f"alt:{request.message}")
+
+    alt_harness = FakeAltHarness()
+    client.app.state.chat_harness_registry = HarnessRegistry(
+        {
+            "openai": client.app.state.chat_harness,
+            "fake-alt": alt_harness,
+        },
+        default_key="openai",
+    )
+    client.app.state.chat_turn_service = ChatTurnService(
+        client.app.state.chat_repository,
+        client.app.state.chat_harness_registry,
+    )
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    bound_chat = client.app.state.chat_repository.create_chat(
+        client_id="client-a",
+        title="Bound chat",
+        harness_key="fake-alt",
+    )
+
+    def raise_if_default_harness_used(_request):
+        raise AssertionError("Follow-up send should resolve the persisted chat binding.")
+
+    monkeypatch.setattr(client.app.state.chat_harness, "run", raise_if_default_harness_used)
+
+    response = _send_message(
+        client,
+        {
+            "message": "Hello from alt",
+            "chat_session_id": str(bound_chat.id),
+        },
+    )
+
+    assert response.status_code == 200
+    assert "alt:Hello from alt" in response.text
+
+
+def test_send_message_returns_503_when_chat_binding_cannot_be_resolved(client):
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    broken_chat = client.app.state.chat_repository.create_chat(
+        client_id="client-a",
+        title="Broken binding",
+        harness_key="missing",
+    )
+
+    response = _send_message(
+        client,
+        {
+            "message": "Hello from broken binding",
+            "chat_session_id": str(broken_chat.id),
+            "request_id": "broken-binding-request",
+        },
+    )
+    turn_request_state = client.app.state.chat_repository.get_turn_request_state(
+        client_id="client-a",
+        request_id="broken-binding-request",
+    )
+
+    assert response.status_code == 503
+    assert "Service Unavailable" in response.text
+    assert "configured chat harness is not available" in response.text
+    assert turn_request_state is not None
+    assert turn_request_state.turn_request.status == "failed"
+    assert turn_request_state.turn_request.failure_code == "harness_unavailable"
 
 
 def test_send_message_rejects_blank_messages(client):
