@@ -36,7 +36,7 @@ class StartupDiagnosticsError(RuntimeError):
         super().__init__(f"Startup diagnostics failed: {summary}")
 
 
-def get_required_startup_paths(prompt_name: str) -> list[tuple[str, Path, str]]:
+def get_required_startup_paths(harness_key: str, prompt_name: str) -> list[tuple[str, Path, str]]:
     return [
         (
             "templates_dir",
@@ -44,16 +44,16 @@ def get_required_startup_paths(prompt_name: str) -> list[tuple[str, Path, str]]:
             "Restore the templates directory in the project root.",
         ),
         (
-            "openai_prompts_dir",
-            PROJECT_ROOT / "templates/prompts/openai",
-            "Restore the OpenAI prompt templates directory.",
+            f"{harness_key}_prompts_dir",
+            PROJECT_ROOT / f"templates/prompts/{harness_key}",
+            f"Restore the {harness_key} prompt templates directory.",
         ),
         (
             "system_prompt_template",
-            PROJECT_ROOT / f"templates/prompts/openai/system_{prompt_name}.j2",
+            PROJECT_ROOT / f"templates/prompts/{harness_key}/system_{prompt_name}.j2",
             (
-                f"Restore templates/prompts/openai/system_{prompt_name}.j2 "
-                "or update OPENAI_PROMPT_NAME."
+                f"Restore templates/prompts/{harness_key}/system_{prompt_name}.j2 "
+                f"or update {harness_key.upper()}_PROMPT_NAME."
             ),
         ),
         (
@@ -65,16 +65,42 @@ def get_required_startup_paths(prompt_name: str) -> list[tuple[str, Path, str]]:
 
 
 def collect_startup_checks(settings: RuntimeSettings) -> list[DiagnosticCheck]:
+    configured_harness = _configured_startup_harness(settings)
     checks = [
-        _check_required_setting(
-            "OPENAI_API_KEY",
-            settings.openai_api_key,
-            detail_prefix="Environment variable",
-            remediation="Set OPENAI_API_KEY in .env or the process environment before startup.",
-        )
+        _check_required_path(
+            "templates_dir",
+            PROJECT_ROOT / "templates",
+            remediation="Restore the templates directory in the project root.",
+        ),
+        _check_required_path(
+            "static_dir",
+            PROJECT_ROOT / "static",
+            remediation="Restore the static assets directory in the project root.",
+        ),
     ]
 
-    for name, path, remediation in get_required_startup_paths(settings.openai_prompt_name):
+    if configured_harness is None:
+        return checks
+
+    checks.insert(
+        0,
+        _check_required_setting(
+            configured_harness["api_key_name"],
+            configured_harness["api_key_value"],
+            detail_prefix="Environment variable",
+            remediation=(
+                f"Set {configured_harness['api_key_name']} in .env or the process environment "
+                "before startup."
+            ),
+        ),
+    )
+
+    for name, path, remediation in get_required_startup_paths(
+        configured_harness["harness_key"],
+        configured_harness["prompt_name"],
+    ):
+        if name in {"templates_dir", "static_dir"}:
+            continue
         checks.append(_check_required_path(name, path, remediation=remediation))
 
     return checks
@@ -176,3 +202,21 @@ def _check_required_path(name: str, path: Path, *, remediation: str) -> Diagnost
         ok=False,
         detail=f"Missing required path: {path}. {remediation}",
     )
+
+
+def _configured_startup_harness(settings: RuntimeSettings) -> dict[str, str | None] | None:
+    if settings.default_harness_key == "openai":
+        return {
+            "harness_key": "openai",
+            "api_key_name": "OPENAI_API_KEY",
+            "api_key_value": settings.openai_api_key,
+            "prompt_name": settings.openai_prompt_name,
+        }
+    if settings.default_harness_key == "anthropic":
+        return {
+            "harness_key": "anthropic",
+            "api_key_name": "ANTHROPIC_API_KEY",
+            "api_key_value": settings.anthropic_api_key,
+            "prompt_name": settings.anthropic_prompt_name,
+        }
+    return None

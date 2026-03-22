@@ -12,7 +12,7 @@ def test_collect_startup_checks_reports_missing_openai_key(monkeypatch):
     monkeypatch.setattr(
         diagnostics,
         "get_required_startup_paths",
-        lambda _prompt_name: [
+        lambda _harness_key, _prompt_name: [
             (
                 "system_prompt_template",
                 Path("templates/prompts/openai/system_default.j2"),
@@ -64,6 +64,42 @@ def test_collect_startup_checks_uses_configured_prompt_name(monkeypatch):
     assert "system_portable_baseline.j2" in prompt_check.detail
 
 
+def test_collect_startup_checks_reports_missing_anthropic_key(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(
+        diagnostics,
+        "get_required_startup_paths",
+        lambda _harness_key, _prompt_name: [
+            (
+                "system_prompt_template",
+                Path("templates/prompts/anthropic/system_default.j2"),
+                "Restore templates/prompts/anthropic/system_default.j2 or update the configured prompt name.",
+            )
+        ],
+    )
+
+    checks = diagnostics.collect_startup_checks(
+        RuntimeSettings(
+            openai_api_key=None,
+            openai_model="gpt-5-mini",
+            openai_prompt_name="default",
+            openai_temperature=1.0,
+            openai_timeout_seconds=30.0,
+            chat_database_path=Path("data/chat.db"),
+            cors_allowed_origins=["*"],
+            cors_allow_credentials=False,
+            cors_allowed_methods=["*"],
+            cors_allowed_headers=["*"],
+            default_harness_key="anthropic",
+            anthropic_api_key=None,
+        )
+    )
+
+    assert checks[0].name == "ANTHROPIC_API_KEY"
+    assert checks[0].ok is False
+    assert "Set ANTHROPIC_API_KEY in .env or the process environment before startup." in checks[0].detail
+
+
 def test_diagnostic_check_as_readiness_item_maps_status():
     check = DiagnosticCheck(name="startup_completed", ok=False, detail="Not ready yet.")
 
@@ -108,10 +144,19 @@ def test_raise_for_failed_startup_checks_preserves_all_failures():
 
 
 def test_get_required_startup_paths_uses_configured_prompt_name():
-    paths = diagnostics.get_required_startup_paths("portable")
+    paths = diagnostics.get_required_startup_paths("openai", "portable")
 
     prompt_path = next(path for name, path, _remediation in paths if name == "system_prompt_template")
     assert prompt_path == diagnostics.PROJECT_ROOT / "templates/prompts/openai/system_portable.j2"
+
+
+def test_get_required_startup_paths_supports_anthropic_prompt_tree():
+    paths = diagnostics.get_required_startup_paths("anthropic", "portable")
+
+    prompt_dir = next(path for name, path, _remediation in paths if name == "anthropic_prompts_dir")
+    prompt_path = next(path for name, path, _remediation in paths if name == "system_prompt_template")
+    assert prompt_dir == diagnostics.PROJECT_ROOT / "templates/prompts/anthropic"
+    assert prompt_path == diagnostics.PROJECT_ROOT / "templates/prompts/anthropic/system_portable.j2"
 
 
 def test_build_readiness_payload_reports_failed_checks():

@@ -1771,7 +1771,7 @@ def test_create_app_fails_with_clear_message_when_system_prompt_template_missing
     monkeypatch.setattr(
         diagnostics,
         "get_required_startup_paths",
-        lambda _prompt_name: [
+        lambda _harness_key, _prompt_name: [
             (
                 "system_prompt_template",
                 Path("templates/prompts/openai/missing_system.j2"),
@@ -1788,6 +1788,92 @@ def test_create_app_fails_with_clear_message_when_system_prompt_template_missing
     with pytest.raises(StartupDiagnosticsError, match=expected):
         with TestClient(app):
             pass
+
+
+def test_create_app_fails_with_clear_message_when_anthropic_key_missing(monkeypatch):
+    def fake_init_logging():
+        return None
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("DEFAULT_CHAT_HARNESS_KEY", "anthropic")
+    monkeypatch.setattr(main, "load_project_env", lambda: False)
+    monkeypatch.setattr(main, "init_logging", fake_init_logging)
+    monkeypatch.setattr(
+        main,
+        "build_chat_harness_registry",
+        lambda _settings: (_ for _ in ()).throw(AssertionError("Registry should not be built")),
+    )
+
+    app = main.create_app()
+    expected = (
+        "Startup diagnostics failed: ANTHROPIC_API_KEY: "
+        "Missing required environment variable ANTHROPIC_API_KEY"
+    )
+    with pytest.raises(StartupDiagnosticsError, match=expected):
+        with TestClient(app):
+            pass
+
+
+def test_create_app_fails_with_clear_message_when_anthropic_system_prompt_template_missing(
+    monkeypatch,
+):
+    def fake_init_logging():
+        return None
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-test-key")
+    monkeypatch.setenv("DEFAULT_CHAT_HARNESS_KEY", "anthropic")
+    monkeypatch.setattr(main, "load_project_env", lambda: False)
+    monkeypatch.setattr(main, "init_logging", fake_init_logging)
+    monkeypatch.setattr(
+        diagnostics,
+        "get_required_startup_paths",
+        lambda _harness_key, _prompt_name: [
+            (
+                "system_prompt_template",
+                Path("templates/prompts/anthropic/missing_system.j2"),
+                "Restore templates/prompts/anthropic/system_default.j2 or update the configured prompt name.",
+            )
+        ],
+    )
+
+    app = main.create_app()
+    expected = (
+        "Startup diagnostics failed: system_prompt_template: "
+        "Missing required path: templates/prompts/anthropic/missing_system.j2"
+    )
+    with pytest.raises(StartupDiagnosticsError, match=expected):
+        with TestClient(app):
+            pass
+
+
+def test_readiness_check_reports_anthropic_default_harness_metadata(monkeypatch, tmp_path):
+    settings = RuntimeSettings(
+        openai_api_key=None,
+        openai_model="gpt-5-mini",
+        openai_prompt_name="default",
+        openai_temperature=1.0,
+        openai_timeout_seconds=30.0,
+        chat_database_path=tmp_path / "chat.db",
+        cors_allowed_origins=["*"],
+        cors_allow_credentials=False,
+        cors_allowed_methods=["*"],
+        cors_allowed_headers=["*"],
+        default_harness_key="anthropic",
+        anthropic_api_key="anthropic-test-key",
+    )
+
+    monkeypatch.setattr(main, "load_project_env", lambda: False)
+    app = main.create_app(settings=settings)
+
+    with TestClient(app) as client:
+        response = client.get("/health/ready")
+
+    assert response.status_code == 200
+    assert response.json()["checks"][1]["metadata"] == {
+        "harness_key": "anthropic",
+        "provider_name": "anthropic",
+        "model": "claude-sonnet-4-20250514",
+    }
 
 
 def test_create_app_uses_env_driven_cors_configuration():
