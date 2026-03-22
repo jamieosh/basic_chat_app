@@ -24,7 +24,7 @@ Current stage:
 - Persists user/assistant turns in SQLite and restores transcripts after reload or direct URL revisit
 - Prevents duplicate request processing with persisted request IDs and conflict-aware replay
 - Supports chat delete while keeping archive backend-only in Phase 2
-- Executes chat requests through the `ChatHarness` contract, a startup-wired `HarnessRegistry`, and a shipped OpenAI-backed default harness (`gpt-5-mini`)
+- Executes chat requests through the `ChatHarness` contract, a startup-wired `HarnessRegistry`, and a shipped OpenAI-backed default harness adapter (`gpt-5-mini`)
 - Persists a stable harness key and optional harness version on each chat session
 - Formats text/code-block output into HTML
 - Returns inline bot message HTML for HTMX insertion
@@ -41,7 +41,7 @@ Current stage:
   - `base_agent.py`: legacy compatibility shim and harness re-export
   - `chat_harness.py`: app-facing `ChatHarness` contract plus normalized request/result/event/failure types
   - `harness_registry.py`: startup-time harness construction plus stable binding resolution
-  - `openai_agent.py`: default OpenAI-backed harness implementation
+  - `openai_agent.py`: default OpenAI-backed harness adapter with provider-specific request construction and error normalization
 - `services/`
   - `chat_turns.py`: small control/service layer for turn-request lifecycle, harness resolution, failure presentation, and idempotent replay coordination
 - `persistence/`
@@ -103,7 +103,7 @@ Current stage:
 - Follow-up sends append to the same persisted chat until the user starts a new chat or switches chats.
 - Duplicate request IDs replay the stored outcome instead of creating duplicate turns.
 - The app layer now depends on normalized harness contracts, registry-backed harness resolution, and persisted chat binding rather than provider SDK exceptions or route-owned harness selection.
-- The default shipped runtime remains OpenAI-backed, but provider-specific behavior should stay inside harness code.
+- The default shipped runtime remains OpenAI-backed, but provider-specific behavior and failure translation should stay inside harness adapter code.
 - New chats are created with the default configured harness binding and keep that binding for their lifetime.
 - Prompting is template-driven:
   - System prompt and optional context prompt are loaded from `templates/prompts/openai/`.
@@ -122,6 +122,7 @@ Current stage:
 - Keep the route-backed restore behavior and hidden `chat_session_id` wiring intact when editing the shell.
 - Keep provider-specific logic behind `agents/chat_harness.py` interfaces rather than reintroducing it into route handlers.
 - Keep default harness selection and binding resolution behind `agents/harness_registry.py` and the small service/control layer rather than in routes.
+- Prefer native `run()` implementations for provider-backed harnesses; keep `BaseAgent` and `process_message()` only as compatibility shims for older agent code.
 - If you update model behavior, keep prompt templates, settings defaults, harness registry defaults, and persisted binding expectations in sync.
 - If you ship a backlog item, keep `README.md`, `AGENTS.md`, `CHANGELOG.md`, and the matching `plans/` backlog/done files aligned.
 - Add tests for:

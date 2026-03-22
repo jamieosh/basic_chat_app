@@ -29,7 +29,7 @@ The main risk is over-scoping into broader Phase 3 cleanup that belongs in later
 - [x] Step 1: Audit and tighten the OpenAI harness adapter so `run()` is the canonical app-facing execution path and OpenAI error normalization stays fully inside the adapter boundary. — files: `agents/openai_agent.py`, `agents/chat_harness.py`, `agents/base_agent.py`
 - [x] Step 2: Remove route/service reliance on provider-shaped or legacy compatibility failure handling, keeping only normalized harness failure presentation in the app layer. — files: `main.py`, `services/chat_turns.py`
 - [x] Step 3: Update unit and route tests to exercise the normalized harness path directly while preserving current OpenAI-backed behavior and prompt assembly parity. — files: `tests/test_openai_agent.py`, `tests/test_main_routes.py`, `tests/test_chat_harness_contract.py`, `tests/test_chat_turn_service.py`
-- [ ] Step 4: Refresh contributor-facing docs so they describe the shipped OpenAI runtime as a harness adapter behind the registry/contract boundary rather than a route-adjacent agent. — files: `README.md`, `AGENTS.md`
+- [x] Step 4: Refresh contributor-facing docs so they describe the shipped OpenAI runtime as a harness adapter behind the registry/contract boundary rather than a route-adjacent agent. — files: `README.md`, `AGENTS.md`
 
 ## Tests to Add
 - [x] Route failure regression that injects `ChatHarnessExecutionError` through `run()` for each user-visible failure category and verifies the rendered HTMX response -> covers AC: The main send path depends on normalized `ChatHarness.run()` execution and normalized failure codes rather than legacy `process_message()` monkeypatching or OpenAI SDK exception assumptions.
@@ -38,13 +38,13 @@ The main risk is over-scoping into broader Phase 3 cleanup that belongs in later
 - [x] Failure-presentation regression that removes coverage dependence on provider-shaped aliases such as `bad_request`, `api_error`, and `empty_model_response` unless they are intentionally retained as compatibility-only shims -> covers AC: Legacy compatibility aliases that keep provider-shaped failure codes alive in app-facing behavior are removed or clearly reduced to non-routing compatibility shims.
 
 ## Definition of Done
-- [ ] All acceptance criteria checked off
+- [x] All acceptance criteria checked off
 - [x] All new or updated tests pass
-- [ ] `uv run ruff check .` passes
-- [ ] `uv run mypy .` passes
-- [ ] `uv run python -m pytest` passes
-- [ ] `README.md` updated if user-visible behavior changed
-- [ ] E2E or visual checks run when UI behavior changes materially
+- [x] `uv run ruff check .` passes
+- [x] `uv run mypy .` passes
+- [x] `uv run python -m pytest` passes
+- [x] `README.md` updated if user-visible behavior changed
+- [x] E2E or visual checks run when UI behavior changes materially
 - [ ] `CHANGELOG.md` updated when the feature ships
 - [ ] Matching phase backlog and `plans/done/PHASE X DONE.md` updated when the feature ships
-- [ ] `AGENTS.md` updated if architecture or contributor guidance changes
+- [x] `AGENTS.md` updated if architecture or contributor guidance changes
