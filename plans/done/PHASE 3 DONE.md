@@ -4,6 +4,29 @@ Completed Phase 3 backlog items move here once they are shipped.
 
 ## Completed Items
 
+### P3-07 Control-Layer Refactor, Error-Handling, And Harness Observability
+
+Priority: P1
+
+Delivered:
+
+- refactored `services/chat_turns.py` so the small control/service layer now owns normalized started-turn execution, harness-resolution fallback, failure finalization, response-harness selection, and per-turn observability shaping
+- updated `main.py` so `/send-message-htmx` consumes normalized service outcomes instead of catching harness execution and resolution failures inline, while the route still owns validation and HTMX rendering
+- extended `utils/diagnostics.py` and `agents/openai_agent.py` so readiness and runtime logs can surface harness key, optional version, provider identity, model identity, and normalized failure categories through shared observability fields
+- expanded regression coverage in `tests/test_chat_turn_service.py`, `tests/test_main_routes.py`, `tests/test_diagnostics.py`, and `tests/test_openai_agent.py` to lock success, failure, duplicate replay, harness-unavailable fallback, conflict handling, and readiness metadata through the refactored control-layer path
+- updated contributor-facing docs so `README.md` and `AGENTS.md` describe the shipped control/service layer and observability responsibilities consistently
+
+Acceptance criteria met:
+
+- route handlers do not branch on provider SDK exception classes or provider-specific error types
+- the control/service layer owns normalized run lifecycle coordination without becoming a large orchestration system
+- logs and diagnostics can identify the harness key, optional version, provider identity, and normalized failure category through shared observability data
+- request lifecycle behavior remains covered for success, failure, duplicate replay, and conflict cases
+- the app layer remains responsible for persistence outcomes and user-facing rendering
+
+What the user sees:
+Failure behavior remains predictable, while the runtime behind it is less coupled to one provider-specific execution path.
+
 ### P3-06 Tool Hook And Capability Foundation
 
 Priority: P2

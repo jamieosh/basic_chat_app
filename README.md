@@ -24,6 +24,7 @@ Those documents define the long-term direction and maturity phases. This README 
 - OpenAI-backed default harness adapter resolved through the normalized event-capable `ChatHarness` surface, with `run_events()` canonical and `run()` acting as the non-streaming collector (`gpt-5-mini` by default).
 - Normalized tool-call and tool-result event vocabulary plus an optional harness-owned `execute_tool_call()` seam for future tool experiments, while the shipped app still persists only user and assistant transcript turns.
 - Startup-wired harness registry plus stable per-chat harness binding (`harness_key` with optional version metadata).
+- A small `services/chat_turns.py` control layer that owns normalized harness execution, failure finalization, replay coordination, and observability shaping before the route renders the HTMX response.
 - Harness-owned context builders that assemble model-facing prompt and transcript context from the canonical persisted chat history.
 - SQLite-backed chat storage with per-client chat ownership and transcript persistence across reloads and restarts.
 - Prompt-template-driven system and user prompt construction.
@@ -187,7 +188,7 @@ basic_chat_app/
 │   ├── harness_registry.py # Startup-time harness registry and binding resolution
 │   └── openai_agent.py    # OpenAI-backed harness adapter behind the contract
 ├── persistence/           # SQLite bootstrap and chat repository code
-├── services/              # Turn lifecycle and harness-resolution control layer
+├── services/              # Turn lifecycle, normalized execution, and observability control layer
 ├── static/                # Static assets
 │   ├── css/              # CSS styles
 │   └── js/               # JavaScript files

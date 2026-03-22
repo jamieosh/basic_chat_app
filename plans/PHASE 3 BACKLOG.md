@@ -14,32 +14,6 @@ The rest of this backlog assumes `ChatHarness`, normalized harness types, and th
 
 ## Proposed Items
 
-### P3-07 Control-Layer Refactor, Error-Handling, And Harness Observability
-
-Priority: P1
-
-Problem:
-Even with a better harness contract, the app still needs a small control/service layer that owns request lifecycle, observability, and failure presentation so the web layer depends only on normalized harness outcomes.
-
-Deliver:
-
-- refactor route and service code so a small control/service layer consumes normalized harness results and failures
-- move provider-specific error mapping out of route handlers
-- normalize harness-level observability fields for logs and diagnostics across providers
-- preserve the existing persistence and idempotency guarantees from Phase 2
-- keep user-facing failure presentation understandable and deterministic
-
-Acceptance criteria:
-
-- route handlers do not branch on provider SDK exception classes
-- the control/service layer owns normalized run lifecycle coordination without becoming a large orchestration system
-- logs and diagnostics can identify the harness key, optional version, provider identity, and normalized failure category without provider-specific branching in routes
-- request lifecycle behavior remains covered for success, failure, duplicate replay, and conflict cases
-- the app layer remains responsible for persistence outcomes and user-facing rendering
-
-What the user sees:
-Failure behavior should remain predictable while becoming less tied to one provider backend.
-
 ### P3-08 Test, Docs, And Forking Guidance Alignment
 
 Priority: P1
@@ -96,5 +70,5 @@ No required UI change, but Phase 3 is now validated against a real alternative p
 
 - `P3-01`, `P3-02`, and `P3-03` are complete groundwork for the rest of Phase 3.
 - `P3-04` makes the harness useful for memory evolution, and `P3-05` now provides the shipped event-capable execution surface for future streaming work.
-- `P3-07` and `P3-08` should tighten the app-layer cleanup and documentation before the final proof step.
+- `P3-08` should tighten the remaining docs and forking guidance before the final proof step.
 - `P3-09` should land late in Phase 3 as the real-world proof that the harness boundary is not only OpenAI in disguise.
