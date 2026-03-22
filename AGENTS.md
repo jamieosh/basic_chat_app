@@ -25,6 +25,7 @@ Current stage:
 - Prevents duplicate request processing with persisted request IDs and conflict-aware replay
 - Supports chat delete while keeping archive backend-only in Phase 2
 - Executes chat requests through the `ChatHarness` contract, a startup-wired `HarnessRegistry`, and a shipped OpenAI-backed default harness adapter (`gpt-5-mini`)
+- Resolves harness execution through a canonical `run_events()` surface, while the current web flow still collects one deterministic final reply for non-streaming HTMX rendering
 - Persists a stable harness key and optional harness version on each chat session
 - Lets harness-owned context builders assemble model-facing prompt and transcript context from the persisted raw conversation record
 - Formats text/code-block output into HTML
@@ -128,7 +129,7 @@ Current stage:
 - Keep provider-specific logic behind `agents/chat_harness.py` interfaces rather than reintroducing it into route handlers.
 - Keep prompt assembly and memory/context shaping behind harness-owned context builders rather than in routes.
 - Keep default harness selection and binding resolution behind `agents/harness_registry.py` and the small service/control layer rather than in routes.
-- Prefer native `run()` implementations for provider-backed harnesses; keep `BaseAgent` and `process_message()` only as compatibility shims for older agent code.
+- Prefer native `run_events()` implementations for provider-backed harnesses, with `run()` left as the shared collector; keep `BaseAgent` and `process_message()` only as compatibility shims for older agent code.
 - If you update model behavior, keep prompt templates, settings defaults, harness registry defaults, and persisted binding expectations in sync.
 - If you ship a backlog item, keep `README.md`, `AGENTS.md`, `CHANGELOG.md`, and the matching `plans/` backlog/done files aligned.
 - Add tests for:

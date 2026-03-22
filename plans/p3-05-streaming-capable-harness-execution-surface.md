@@ -41,7 +41,7 @@ Result and event invariants need to stay strict enough that duplicate replay, co
 - [x] Step 1: Refactor the core harness contract so `run_events()` is the canonical execution method, `run()` is a collector, and normalized event/result invariants cover partial output, completion, failure, and inspectable metadata. — files: [`agents/chat_harness.py`](/Users/jamie/Development/basic_chat_app/agents/chat_harness.py), [`tests/test_chat_harness_contract.py`](/Users/jamie/Development/basic_chat_app/tests/test_chat_harness_contract.py)
 - [x] Step 2: Update compatibility and default provider harnesses to emit a single event-driven execution path, keeping provider-specific request building and failure normalization inside the harness adapter. — files: [`agents/chat_harness.py`](/Users/jamie/Development/basic_chat_app/agents/chat_harness.py), [`agents/openai_agent.py`](/Users/jamie/Development/basic_chat_app/agents/openai_agent.py), [`tests/test_openai_agent.py`](/Users/jamie/Development/basic_chat_app/tests/test_openai_agent.py)
 - [x] Step 3: Add a small collection seam for the current non-streaming app flow so turn persistence and HTML rendering consume the event-capable harness path without changing the HTMX UX. — files: [`services/chat_turns.py`](/Users/jamie/Development/basic_chat_app/services/chat_turns.py), [`main.py`](/Users/jamie/Development/basic_chat_app/main.py), [`tests/test_chat_turn_service.py`](/Users/jamie/Development/basic_chat_app/tests/test_chat_turn_service.py), [`tests/test_main_routes.py`](/Users/jamie/Development/basic_chat_app/tests/test_main_routes.py)
-- [ ] Step 4: Tighten contributor-facing terminology only where the new plan exposes changed contract expectations for harness implementers. — files: [`README.md`](/Users/jamie/Development/basic_chat_app/README.md), [`AGENTS.md`](/Users/jamie/Development/basic_chat_app/AGENTS.md)
+- [x] Step 4: Tighten contributor-facing terminology only where the new plan exposes changed contract expectations for harness implementers. — files: [`README.md`](/Users/jamie/Development/basic_chat_app/README.md), [`AGENTS.md`](/Users/jamie/Development/basic_chat_app/AGENTS.md)
 
 ## Tests to Add
 - [x] Contract test proving `run()` collects a final result from multiple normalized events and preserves event ordering metadata. -> covers AC: `ChatHarness.run()` is only a collector over `run_events()`, and provider-backed harnesses do not maintain separate execution logic for the two paths.
@@ -51,7 +51,7 @@ Result and event invariants need to stay strict enough that duplicate replay, co
 - [x] Route/service regression test proving an execution failure after one or more output events still resolves to the normalized failure path without persisting a partial assistant turn. -> covers AC: Failure handling remains normalized and deterministic when execution fails partway through the event stream.
 
 ## Definition of Done
-- [ ] All acceptance criteria checked off
+- [x] All acceptance criteria checked off
 - [ ] All new or updated tests pass
 - [ ] `uv run ruff check .` passes
 - [ ] `uv run mypy .` passes
@@ -60,4 +60,4 @@ Result and event invariants need to stay strict enough that duplicate replay, co
 - [ ] E2E or visual checks run when UI behavior changes materially
 - [ ] `CHANGELOG.md` updated when the feature ships
 - [ ] Matching phase backlog and `plans/done/PHASE X DONE.md` updated when the feature ships
-- [ ] `AGENTS.md` updated if architecture or contributor guidance changes
+- [x] `AGENTS.md` updated if architecture or contributor guidance changes
