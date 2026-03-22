@@ -5,10 +5,10 @@ import openai
 import pytest
 
 from agents.base_agent import ChatHarnessExecutionError, ChatHarnessRequest, ConversationTurn
-from agents.openai_agent import EmptyModelResponseError, OpenAIAgent
+from agents.openai_agent import OpenAIAgent
 
 
-def test_process_message_builds_prompt_and_returns_model_text():
+def test_run_builds_prompt_and_returns_model_text():
     agent = OpenAIAgent(api_key="test-key")
     captured = {}
 
@@ -24,9 +24,9 @@ def test_process_message_builds_prompt_and_returns_model_text():
         )
     )
 
-    reply = agent.process_message("Hello there")
+    result = agent.run(ChatHarnessRequest(message="Hello there"))
 
-    assert reply == "Mock reply"
+    assert result.output_text == "Mock reply"
     assert captured["model"] == "gpt-5-mini"
     assert captured["timeout"] == 30
     assert captured["messages"][0]["role"] == "system"
@@ -35,11 +35,11 @@ def test_process_message_builds_prompt_and_returns_model_text():
     assert "temperature" not in captured
 
 
-def test_process_message_rejects_blank_input():
+def test_run_rejects_blank_input():
     agent = OpenAIAgent(api_key="test-key")
 
     with pytest.raises(ValueError, match="Message cannot be empty"):
-        agent.process_message("   ")
+        agent.run(ChatHarnessRequest(message="   "))
 
 
 def test_display_name_and_known_model_display_name():
@@ -64,7 +64,7 @@ def test_identity_exposes_openai_harness_metadata():
     assert agent.identity.model_display_name == "GPT-5 Mini"
 
 
-def test_process_message_uses_configured_prompt_name_temperature_and_timeout(tmp_path):
+def test_run_uses_configured_prompt_name_temperature_and_timeout(tmp_path):
     templates_dir = tmp_path / "templates" / "prompts" / "openai"
     templates_dir.mkdir(parents=True)
     (templates_dir / "system_portable.j2").write_text("System prompt", encoding="utf-8")
@@ -92,9 +92,9 @@ def test_process_message_uses_configured_prompt_name_temperature_and_timeout(tmp
         )
     )
 
-    reply = agent.process_message("Hello there")
+    result = agent.run(ChatHarnessRequest(message="Hello there"))
 
-    assert reply == "Configured reply"
+    assert result.output_text == "Configured reply"
     assert captured["model"] == "gpt-4o"
     assert captured["temperature"] == 0.7
     assert captured["timeout"] == 12.5
@@ -125,7 +125,7 @@ def test_run_returns_chat_harness_result_with_openai_observability():
     assert result.metadata["model_display_name"] == "GPT-5 Mini"
 
 
-def test_process_message_omits_custom_temperature_for_gpt5_models():
+def test_run_omits_custom_temperature_for_gpt5_models():
     agent = OpenAIAgent(api_key="test-key", model="gpt-5-mini", temperature=0.2)
     captured = {}
 
@@ -141,14 +141,14 @@ def test_process_message_omits_custom_temperature_for_gpt5_models():
         )
     )
 
-    reply = agent.process_message("Hello there")
+    result = agent.run(ChatHarnessRequest(message="Hello there"))
 
-    assert reply == "Mock reply"
+    assert result.output_text == "Mock reply"
     assert captured["model"] == "gpt-5-mini"
     assert "temperature" not in captured
 
 
-def test_process_message_without_context_prompt_uses_raw_user_message():
+def test_run_without_context_prompt_uses_raw_user_message():
     agent = OpenAIAgent(api_key="test-key")
     captured = {}
 
@@ -168,13 +168,13 @@ def test_process_message_without_context_prompt_uses_raw_user_message():
         )
     )
 
-    reply = agent.process_message("Just this message")
+    result = agent.run(ChatHarnessRequest(message="Just this message"))
 
-    assert reply == "No context reply"
+    assert result.output_text == "No context reply"
     assert captured["messages"][1]["content"] == "Just this message"
 
 
-def test_process_message_prepends_rendered_context_when_present():
+def test_run_prepends_rendered_context_when_present():
     agent = OpenAIAgent(api_key="test-key")
     captured = {}
 
@@ -191,13 +191,13 @@ def test_process_message_prepends_rendered_context_when_present():
         )
     )
 
-    reply = agent.process_message("How far is it?")
+    result = agent.run(ChatHarnessRequest(message="How far is it?"))
 
-    assert reply == "Context reply"
+    assert result.output_text == "Context reply"
     assert captured["messages"][1]["content"] == "Use metric units.\n\nHow far is it?"
 
 
-def test_process_message_includes_prior_history_before_latest_user_turn():
+def test_run_includes_prior_history_before_latest_user_turn():
     agent = OpenAIAgent(api_key="test-key")
     captured = {}
 
@@ -213,15 +213,17 @@ def test_process_message_includes_prior_history_before_latest_user_turn():
         )
     )
 
-    reply = agent.process_message(
-        "What next?",
-        conversation_history=[
-            ConversationTurn(role="user", content="First question"),
-            ConversationTurn(role="assistant", content="First answer"),
-        ],
+    result = agent.run(
+        ChatHarnessRequest(
+            message="What next?",
+            conversation_history=[
+                ConversationTurn(role="user", content="First question"),
+                ConversationTurn(role="assistant", content="First answer"),
+            ],
+        )
     )
 
-    assert reply == "History reply"
+    assert result.output_text == "History reply"
     assert [message["role"] for message in captured["messages"]] == [
         "system",
         "user",
@@ -259,7 +261,7 @@ def test_context_prompt_renders_only_explicit_context_sections():
     assert "User preferences: Prefer short replies." in context
 
 
-def test_process_message_raises_when_model_content_is_missing():
+def test_run_normalizes_missing_model_content_as_empty_response_failure():
     agent = OpenAIAgent(api_key="test-key")
 
     def fake_create(**_kwargs):
@@ -273,8 +275,11 @@ def test_process_message_raises_when_model_content_is_missing():
         )
     )
 
-    with pytest.raises(EmptyModelResponseError, match="did not include any text content"):
-        agent.process_message("Hello there")
+    with pytest.raises(ChatHarnessExecutionError) as exc_info:
+        agent.run(ChatHarnessRequest(message="Hello there"))
+
+    assert exc_info.value.failure.code == "empty_response"
+    assert "did not include any text content" in exc_info.value.failure.detail
 
 
 @pytest.mark.parametrize(
@@ -348,7 +353,7 @@ def test_process_message_reraises_file_not_found_when_system_prompt_lookup_fails
     ],
     ids=["empty_string", "whitespace_only"],
 )
-def test_process_message_raises_when_model_content_is_blank(content):
+def test_run_normalizes_blank_model_content_as_empty_response_failure(content):
     agent = OpenAIAgent(api_key="test-key")
 
     def fake_create(**_kwargs):
@@ -362,11 +367,14 @@ def test_process_message_raises_when_model_content_is_blank(content):
         )
     )
 
-    with pytest.raises(EmptyModelResponseError, match="empty text response"):
-        agent.process_message("Hello there")
+    with pytest.raises(ChatHarnessExecutionError) as exc_info:
+        agent.run(ChatHarnessRequest(message="Hello there"))
+
+    assert exc_info.value.failure.code == "empty_response"
+    assert "empty text response" in exc_info.value.failure.detail
 
 
-def test_process_message_raises_when_response_has_no_choices():
+def test_run_normalizes_missing_choices_as_empty_response_failure():
     agent = OpenAIAgent(api_key="test-key")
 
     def fake_create(**_kwargs):
@@ -378,11 +386,14 @@ def test_process_message_raises_when_response_has_no_choices():
         )
     )
 
-    with pytest.raises(EmptyModelResponseError, match="no choices"):
-        agent.process_message("Hello there")
+    with pytest.raises(ChatHarnessExecutionError) as exc_info:
+        agent.run(ChatHarnessRequest(message="Hello there"))
+
+    assert exc_info.value.failure.code == "empty_response"
+    assert "no choices" in exc_info.value.failure.detail
 
 
-def test_process_message_raises_when_response_has_no_message():
+def test_run_normalizes_missing_message_as_empty_response_failure():
     agent = OpenAIAgent(api_key="test-key")
 
     def fake_create(**_kwargs):
@@ -394,11 +405,14 @@ def test_process_message_raises_when_response_has_no_message():
         )
     )
 
-    with pytest.raises(EmptyModelResponseError, match="missing a message"):
-        agent.process_message("Hello there")
+    with pytest.raises(ChatHarnessExecutionError) as exc_info:
+        agent.run(ChatHarnessRequest(message="Hello there"))
+
+    assert exc_info.value.failure.code == "empty_response"
+    assert "missing a message" in exc_info.value.failure.detail
 
 
-def test_process_message_raises_when_model_content_is_not_a_string():
+def test_run_normalizes_non_text_model_content_as_empty_response_failure():
     agent = OpenAIAgent(api_key="test-key")
 
     def fake_create(**_kwargs):
@@ -412,8 +426,11 @@ def test_process_message_raises_when_model_content_is_not_a_string():
         )
     )
 
-    with pytest.raises(EmptyModelResponseError, match="non-text content"):
-        agent.process_message("Hello there")
+    with pytest.raises(ChatHarnessExecutionError) as exc_info:
+        agent.run(ChatHarnessRequest(message="Hello there"))
+
+    assert exc_info.value.failure.code == "empty_response"
+    assert "non-text content" in exc_info.value.failure.detail
 
 
 def _build_agent_that_raises(error):
