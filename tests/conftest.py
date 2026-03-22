@@ -14,6 +14,8 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 
 import main
+from agents.base_agent import ChatHarness, ChatHarnessEvent, ChatHarnessIdentity, ChatHarnessRequest
+from agents.harness_registry import HarnessRegistry
 from utils.settings import RuntimeSettings
 
 
@@ -21,6 +23,44 @@ from utils.settings import RuntimeSettings
 class LiveServer:
     base_url: str
     database_path: Path
+
+
+class FakeEventHarness(ChatHarness):
+    def __init__(
+        self,
+        *,
+        key: str = "fake-default",
+        display_name: str = "Fake Bot",
+        model_display_name: str = "Fake Model",
+        provider_name: str | None = "fake-provider",
+        version: str | None = None,
+        model: str | None = "fake-model",
+        reply_prefix: str = "fake",
+    ) -> None:
+        self._identity = ChatHarnessIdentity(
+            key=key,
+            display_name=display_name,
+            model_display_name=model_display_name,
+            provider_name=provider_name,
+            version=version,
+        )
+        self.model = model
+        self.reply_prefix = reply_prefix
+
+    @property
+    def identity(self) -> ChatHarnessIdentity:
+        return self._identity
+
+    def run_events(self, request: ChatHarnessRequest):
+        yield ChatHarnessEvent(
+            event_type="output_text",
+            output_text=f"{self.reply_prefix}:{request.message}",
+            sequence=0,
+        )
+        yield ChatHarnessEvent(
+            event_type="completed",
+            sequence=1,
+        )
 
 
 @pytest.fixture
@@ -40,6 +80,39 @@ def client(tmp_path):
     )
     with TestClient(main.create_app(settings=settings)) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def fake_event_harness_factory():
+    return lambda **kwargs: FakeEventHarness(**kwargs)
+
+
+@pytest.fixture
+def app_with_fake_default_harness(tmp_path, fake_event_harness_factory):
+    def build(*, key: str = "fake-default", version: str | None = None):
+        harness = fake_event_harness_factory(key=key, version=version)
+        settings = RuntimeSettings(
+            openai_api_key="test-key",
+            openai_model="gpt-5-mini",
+            openai_prompt_name="default",
+            openai_temperature=1.0,
+            openai_timeout_seconds=30.0,
+            chat_database_path=tmp_path / "chat.db",
+            cors_allowed_origins=["*"],
+            cors_allow_credentials=False,
+            cors_allowed_methods=["*"],
+            cors_allowed_headers=["*"],
+            default_harness_key=key,
+        )
+
+        app = main.create_app(settings=settings)
+
+        def fake_build_chat_harness_registry(_settings):
+            return HarnessRegistry({key: harness}, default_key=key)
+
+        return app, harness, fake_build_chat_harness_registry
+
+    return build
 
 
 def _find_free_port() -> int:
