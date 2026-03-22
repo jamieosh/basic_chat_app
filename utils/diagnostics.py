@@ -36,6 +36,14 @@ class StartupDiagnosticsError(RuntimeError):
         super().__init__(f"Startup diagnostics failed: {summary}")
 
 
+@dataclass(frozen=True)
+class ConfiguredStartupHarness:
+    harness_key: str
+    api_key_name: str
+    api_key_value: str | None
+    prompt_name: str
+
+
 def get_required_startup_paths(harness_key: str, prompt_name: str) -> list[tuple[str, Path, str]]:
     return [
         (
@@ -85,19 +93,19 @@ def collect_startup_checks(settings: RuntimeSettings) -> list[DiagnosticCheck]:
     checks.insert(
         0,
         _check_required_setting(
-            configured_harness["api_key_name"],
-            configured_harness["api_key_value"],
+            configured_harness.api_key_name,
+            configured_harness.api_key_value,
             detail_prefix="Environment variable",
             remediation=(
-                f"Set {configured_harness['api_key_name']} in .env or the process environment "
+                f"Set {configured_harness.api_key_name} in .env or the process environment "
                 "before startup."
             ),
         ),
     )
 
     for name, path, remediation in get_required_startup_paths(
-        configured_harness["harness_key"],
-        configured_harness["prompt_name"],
+        configured_harness.harness_key,
+        configured_harness.prompt_name,
     ):
         if name in {"templates_dir", "static_dir"}:
             continue
@@ -204,19 +212,19 @@ def _check_required_path(name: str, path: Path, *, remediation: str) -> Diagnost
     )
 
 
-def _configured_startup_harness(settings: RuntimeSettings) -> dict[str, str | None] | None:
+def _configured_startup_harness(settings: RuntimeSettings) -> ConfiguredStartupHarness | None:
     if settings.default_harness_key == "openai":
-        return {
-            "harness_key": "openai",
-            "api_key_name": "OPENAI_API_KEY",
-            "api_key_value": settings.openai_api_key,
-            "prompt_name": settings.openai_prompt_name,
-        }
+        return ConfiguredStartupHarness(
+            harness_key="openai",
+            api_key_name="OPENAI_API_KEY",
+            api_key_value=settings.openai_api_key,
+            prompt_name=settings.openai_prompt_name,
+        )
     if settings.default_harness_key == "anthropic":
-        return {
-            "harness_key": "anthropic",
-            "api_key_name": "ANTHROPIC_API_KEY",
-            "api_key_value": settings.anthropic_api_key,
-            "prompt_name": settings.anthropic_prompt_name,
-        }
+        return ConfiguredStartupHarness(
+            harness_key="anthropic",
+            api_key_name="ANTHROPIC_API_KEY",
+            api_key_value=settings.anthropic_api_key,
+            prompt_name=settings.anthropic_prompt_name,
+        )
     return None

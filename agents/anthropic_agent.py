@@ -1,4 +1,5 @@
 import anthropic
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -222,7 +223,7 @@ class AnthropicAgent(BaseAgent):
     def process_message(
         self,
         message: str,
-        conversation_history: tuple[ConversationTurn, ...] | None = None,
+        conversation_history: Sequence[ConversationTurn] | None = None,
     ) -> str:
         request = ChatHarnessRequest(
             message=message,

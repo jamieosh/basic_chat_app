@@ -24,7 +24,7 @@ Current stage:
 - Persists user/assistant turns in SQLite and restores transcripts after reload or direct URL revisit
 - Prevents duplicate request processing with persisted request IDs and conflict-aware replay
 - Supports chat delete while keeping archive backend-only in Phase 2
-- Executes chat requests through the `ChatHarness` contract, a startup-wired `HarnessRegistry`, and a shipped OpenAI-backed default harness adapter (`gpt-5-mini`)
+- Executes chat requests through the `ChatHarness` contract, a startup-wired `HarnessRegistry`, a shipped OpenAI-backed default harness adapter (`gpt-5-mini`), and a shipped Anthropic proof adapter (`claude-sonnet-4-20250514`)
 - Resolves harness execution through a canonical `run_events()` surface, while the current web flow still collects one deterministic final reply for non-streaming HTMX rendering
 - Keeps the harness contract ready for future tool experiments with normalized tool-call/tool-result events and an optional tool orchestration hook
 - Persists a stable harness key and optional harness version on each chat session
@@ -41,6 +41,7 @@ Current stage:
   - CORS/static/template setup
   - Full page routes, HTMX partial routes, send lifecycle, readiness wiring, and response/error rendering
 - `agents/`
+  - `anthropic_agent.py`: Anthropic-backed harness adapter with provider-specific request construction, default context assembly, and error normalization
   - `base_agent.py`: legacy compatibility shim and harness re-export
   - `chat_harness.py`: app-facing `ChatHarness` contract plus normalized request/result/event/failure/context types, tool vocabulary, and optional tool orchestration seam
   - `context_builders.py`: harness-owned context-builder vocabulary and the shipped default transcript-based builder
@@ -61,6 +62,7 @@ Current stage:
 - `templates/`
   - `index.html`: main page shell
   - `components/chat.html`: chat body + form
+  - `prompts/anthropic/*.j2`: Anthropic prompt templates
   - `prompts/openai/*.j2`: prompt templates
 - `static/`
   - `js/chat.js`: input handling, typing indicator, HTMX UX wiring
@@ -94,7 +96,7 @@ Current stage:
 2. Install dependencies with `uv`:
    - `uv sync`
 3. Create `.env` with:
-   - `OPENAI_API_KEY=...`
+   - `DEFAULT_CHAT_HARNESS_KEY=openai` plus `OPENAI_API_KEY=...`, or `DEFAULT_CHAT_HARNESS_KEY=anthropic` plus `ANTHROPIC_API_KEY=...`
 4. Start app:
    - `uv run uvicorn main:app --reload`
 5. Open:
@@ -108,11 +110,12 @@ Current stage:
 - Duplicate request IDs replay the stored outcome instead of creating duplicate turns.
 - The app layer now depends on normalized harness contracts, registry-backed harness resolution, and persisted chat binding rather than provider SDK exceptions or route-owned harness selection.
 - The control/service layer now owns normalized harness execution coordination, persisted failure finalization, and per-turn observability shaping so routes can stay focused on HTTP validation and rendering.
-- The default shipped runtime remains OpenAI-backed, but provider-specific behavior and failure translation should stay inside harness adapter code.
+- The default shipped runtime remains OpenAI-backed, but Anthropic is now available through backend configuration and provider-specific behavior and failure translation should stay inside harness adapter code.
 - The harness contract can now represent tool-call and tool-result activity in-memory without changing the current persisted transcript or HTMX response flow.
 - New chats are created with the default configured harness binding and keep that binding for their lifetime.
+- `DEFAULT_CHAT_HARNESS_KEY` controls whether new chats bind to `openai` or `anthropic`; changing it does not rewrite existing chat bindings.
 - Prompting is template-driven:
-  - System prompt and optional context prompt are loaded from `templates/prompts/openai/`.
+  - System prompt and optional context prompt are loaded from `templates/prompts/<harness_key>/`.
 - The harness layer now owns prompt assembly and context/memory shaping:
   - routes persist and supply the canonical raw transcript
   - harness-owned context builders turn that transcript into model-facing context
@@ -141,7 +144,7 @@ Current stage:
   - switch the default via settings or registry wiring rather than route branching
   - add coverage in contract, registry, service, and route tests
 - Prefer native `run_events()` implementations for provider-backed harnesses, with `run()` left as the shared collector; keep `BaseAgent` and `process_message()` only as compatibility shims for older agent code.
-- Treat `agents/openai_agent.py` as the shipped default adapter, not as the mandatory template for all future harnesses.
+- Treat `agents/openai_agent.py` as the shipped default adapter and `agents/anthropic_agent.py` as the shipped alternative proof adapter, not as mandatory templates for all future harnesses.
 - If you update model behavior, keep prompt templates, settings defaults, harness registry defaults, and persisted binding expectations in sync.
 - If you ship a backlog item, keep `README.md`, `AGENTS.md`, `CHANGELOG.md`, and the matching `plans/` backlog/done files aligned.
 - Add tests for:
@@ -167,6 +170,8 @@ Current tests are located in `tests/` and use `pytest`.
   - Verifies normalized harness types and compatibility behavior.
 - `tests/test_openai_agent.py`
   - Verifies OpenAI harness request construction, normalization, and input validation.
+- `tests/test_anthropic_agent.py`
+  - Verifies Anthropic harness request construction, normalization, and input validation.
 - `tests/test_prompt_manager.py`
   - Verifies template rendering and missing-template handling.
 - `tests/test_html_formatter.py`
