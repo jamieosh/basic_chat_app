@@ -1,3 +1,5 @@
+import sqlite3
+
 from persistence import ChatRepository, bootstrap_database
 
 
@@ -32,9 +34,30 @@ def test_chat_repository_round_trips_chats_and_messages(tmp_path):
 
     assert loaded_chat is not None
     assert loaded_chat.title == "Chat 1"
+    assert loaded_chat.harness_key == "openai"
+    assert loaded_chat.harness_version is None
     assert [message.id for message in messages] == [first_message.id, second_message.id]
     assert [message.position for message in messages] == [0, 1]
     assert [message.role for message in messages] == ["user", "assistant"]
+
+
+def test_chat_repository_round_trips_explicit_harness_binding(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+
+    chat = repository.create_chat(
+        client_id="client-a",
+        title="Bound chat",
+        harness_key="fake-harness",
+        harness_version="2026-03-22",
+    )
+
+    loaded_chat = repository.get_chat(chat_session_id=chat.id, client_id="client-a")
+
+    assert loaded_chat is not None
+    assert loaded_chat.harness_key == "fake-harness"
+    assert loaded_chat.harness_version == "2026-03-22"
 
 
 def test_chat_repository_scopes_visibility_and_soft_delete(tmp_path):
@@ -122,6 +145,104 @@ def test_chat_repository_start_turn_uses_default_title_helper(monkeypatch, tmp_p
     assert start_result.outcome == "started"
     assert start_result.chat_session is not None
     assert start_result.chat_session.title == "Seeded title for client-a"
+    assert start_result.chat_session.harness_key == "openai"
+    assert start_result.chat_session.harness_version is None
+
+
+def test_chat_repository_start_turn_persists_requested_harness_binding(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+
+    start_result = repository.start_turn_request(
+        client_id="client-a",
+        request_id="request-harness-binding",
+        chat_session_id=None,
+        message="Hello",
+        harness_key="fake-harness",
+        harness_version="2026-03-22",
+    )
+
+    assert start_result.outcome == "started"
+    assert start_result.chat_session is not None
+    assert start_result.chat_session.harness_key == "fake-harness"
+    assert start_result.chat_session.harness_version == "2026-03-22"
+
+
+def test_bootstrap_database_backfills_harness_binding_for_existing_chat_sessions(tmp_path):
+    db_path = tmp_path / "chat.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE chat_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT NOT NULL,
+                title TEXT NOT NULL CHECK(title <> ''),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                archived_at TEXT,
+                deleted_at TEXT
+            );
+
+            CREATE TABLE chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_session_id INTEGER NOT NULL,
+                position INTEGER NOT NULL CHECK(position >= 0),
+                role TEXT NOT NULL CHECK(role IN ('system', 'user', 'assistant')),
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (chat_session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                UNIQUE (chat_session_id, position)
+            );
+
+            CREATE INDEX idx_chat_sessions_visible_by_client
+            ON chat_sessions (client_id, archived_at, deleted_at, updated_at DESC, id DESC);
+
+            CREATE INDEX idx_chat_messages_by_chat_position
+            ON chat_messages (chat_session_id, position ASC, id ASC);
+
+            CREATE TABLE chat_turn_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT NOT NULL,
+                request_id TEXT NOT NULL,
+                chat_session_id INTEGER NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('processing', 'completed', 'failed', 'conflicted')),
+                user_message_id INTEGER NOT NULL,
+                assistant_message_id INTEGER,
+                failure_code TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (chat_session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_message_id) REFERENCES chat_messages(id) ON DELETE CASCADE,
+                FOREIGN KEY (assistant_message_id) REFERENCES chat_messages(id) ON DELETE CASCADE,
+                UNIQUE (client_id, request_id)
+            );
+
+            CREATE INDEX idx_chat_turn_requests_by_client_status
+            ON chat_turn_requests (client_id, status, updated_at DESC, id DESC);
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO chat_sessions (
+                client_id,
+                title,
+                created_at,
+                updated_at,
+                archived_at,
+                deleted_at
+            ) VALUES (?, ?, ?, ?, NULL, NULL)
+            """,
+            ("client-a", "Legacy chat", "2026-03-22T10:00:00+00:00", "2026-03-22T10:00:00+00:00"),
+        )
+
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    loaded_chat = repository.get_chat(chat_session_id=1, client_id="client-a")
+
+    assert loaded_chat is not None
+    assert loaded_chat.harness_key == "openai"
+    assert loaded_chat.harness_version is None
 
 
 def test_chat_repository_keeps_default_title_sequence_after_delete_and_archive(tmp_path):

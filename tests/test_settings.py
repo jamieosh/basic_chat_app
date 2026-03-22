@@ -29,6 +29,7 @@ def test_get_settings_defaults_match_no_auth_baseline(monkeypatch):
     assert settings.cors_allow_credentials is False
     assert settings.cors_allowed_methods == ["*"]
     assert settings.cors_allowed_headers == ["*"]
+    assert settings.default_harness_key == "openai"
 
 
 def test_get_settings_parses_env_driven_configuration(monkeypatch):
@@ -41,6 +42,7 @@ def test_get_settings_parses_env_driven_configuration(monkeypatch):
     monkeypatch.setenv("CORS_ALLOW_CREDENTIALS", "true")
     monkeypatch.setenv("CORS_ALLOWED_METHODS", "GET,POST")
     monkeypatch.setenv("CORS_ALLOWED_HEADERS", "Content-Type,HX-Request")
+    monkeypatch.setenv("DEFAULT_CHAT_HARNESS_KEY", "openai")
 
     settings = get_settings()
 
@@ -53,6 +55,7 @@ def test_get_settings_parses_env_driven_configuration(monkeypatch):
     assert settings.cors_allow_credentials is True
     assert settings.cors_allowed_methods == ["GET", "POST"]
     assert settings.cors_allowed_headers == ["Content-Type", "HX-Request"]
+    assert settings.default_harness_key == "openai"
 
 
 def test_get_settings_rejects_wildcard_origin_with_credentials(monkeypatch):

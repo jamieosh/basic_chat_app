@@ -14,32 +14,6 @@ The rest of this backlog assumes `ChatHarness`, normalized harness types, and th
 
 ## Proposed Items
 
-### P3-02 Harness Registry, Control Wiring, And Stable Binding
-
-Priority: P0
-
-Problem:
-Startup still needs a clearer separation between the route layer, the small control/service layer, and harness resolution, and chats are not yet associated with a harness binding that can survive later provider expansion.
-
-Deliver:
-
-- add harness-focused startup wiring and a harness registry or factory
-- centralize harness selection behind a small control/service layer rather than route-level wiring
-- persist a harness key and optional harness version on chat creation
-- keep one chat bound to one harness configuration for its lifetime
-- keep provider or agent configuration independent from chat records and resolved through the harness binding
-- preserve a simple single-default-harness setup for the out-of-box app
-
-Acceptance criteria:
-
-- the app can resolve the harness for a chat without route-level provider branching
-- the route layer no longer acts as the de facto owner of harness selection and execution wiring
-- new chats are created with a stable harness binding
-- the default configuration remains simple for contributors who only want the shipped baseline
-
-What the user sees:
-No major visible UI change, but a chat is now anchored to a specific harness configuration behind the scenes.
-
 ### P3-03 OpenAI Harness Adapter Migration
 
 Priority: P0

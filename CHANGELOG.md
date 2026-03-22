@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-03-22
+
+### Ship Phase 3 Harness Registry, Control Wiring, And Stable Binding
+
+- Added a startup-wired `HarnessRegistry` in `agents/harness_registry.py` and updated `main.py` plus `utils/settings.py` so the shipped app resolves its default harness through registry-backed configuration instead of route-owned provider wiring.
+- Extended `persistence/db.py` and `persistence/repository.py` so `chat_sessions` now persist `harness_key` plus optional `harness_version`, with additive SQLite backfill for older local databases that predate the binding columns.
+- Refactored `services/chat_turns.py` and the `/send-message-htmx` flow in `main.py` so new chats stamp a stable harness binding and later sends resolve execution from the persisted chat binding instead of assuming one global harness instance.
+- Added regression coverage in `tests/test_chat_repository.py`, `tests/test_chat_turn_service.py`, and `tests/test_main_routes.py` for binding round-trips, legacy-database backfill, persisted follow-up resolution, and unknown-binding failure handling.
+- Updated `README.md`, `AGENTS.md`, `plans/PHASE 3 BACKLOG.md`, and `plans/done/PHASE 3 DONE.md` to reflect the shipped Phase 3 harness-registry seam and stable chat binding model.
+- Verification passed with `uv run ruff check .`, `uv run mypy .`, and `uv run python -m pytest` (`187 passed`).
+
 ## 2026-03-15
 
 ### Ship Phase 3 Chat Harness Vocabulary And Contracts

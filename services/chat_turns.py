@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from persistence.repository import ChatRepository, ChatTurnRequestState, StartTurnRequestResult
+from agents.harness_registry import HarnessRegistry, HarnessResolutionError
+from agents.chat_harness import ChatHarness
+from persistence.db import DEFAULT_CHAT_HARNESS_KEY
+from persistence.repository import ChatRepository, ChatSession, ChatTurnRequestState, StartTurnRequestResult
 
 
 @dataclass(frozen=True)
@@ -89,6 +92,12 @@ FAILURE_PRESENTATIONS = {
         status_code=502,
         log_event="chat.empty_response",
     ),
+    "harness_unavailable": FailurePresentation(
+        title="Service Unavailable",
+        body="The configured chat harness is not available. Please try again later.",
+        status_code=503,
+        log_event="chat.harness_unavailable",
+    ),
 }
 
 
@@ -101,8 +110,36 @@ def failure_presentation(code: str) -> FailurePresentation:
 class ChatTurnService:
     """Own the idempotent chat send lifecycle and its 404/409 persistence policy."""
 
-    def __init__(self, repository: ChatRepository):
+    def __init__(
+        self,
+        repository: ChatRepository,
+        harness_registry: HarnessRegistry | None = None,
+        *,
+        default_harness_key: str = DEFAULT_CHAT_HARNESS_KEY,
+    ):
         self._repository = repository
+        self._harness_registry = harness_registry
+        self._default_harness_key = default_harness_key
+
+    def default_harness(self) -> ChatHarness:
+        if self._harness_registry is None:
+            raise HarnessResolutionError("Chat harness registry is not configured.")
+        return self._harness_registry.default()
+
+    def resolve_harness_for_chat_session(self, chat_session: ChatSession) -> ChatHarness:
+        if self._harness_registry is None:
+            raise HarnessResolutionError("Chat harness registry is not configured.")
+        return self._harness_registry.resolve_binding(
+            chat_session.harness_key,
+            version=chat_session.harness_version,
+        )
+
+    def resolve_harness_for_turn_state(self, turn_state: ChatTurnRequestState) -> ChatHarness:
+        if turn_state.chat_session is None:
+            raise HarnessResolutionError(
+                f"Turn request {turn_state.turn_request.request_id} is missing its chat session."
+            )
+        return self.resolve_harness_for_chat_session(turn_state.chat_session)
 
     def start_turn(
         self,
@@ -112,11 +149,16 @@ class ChatTurnService:
         chat_session_id: int | None,
         message: str,
     ) -> StartTurnRequestResult:
+        harness = self._harness_registry.default() if self._harness_registry is not None else None
         return self._repository.start_turn_request(
             client_id=client_id,
             request_id=request_id,
             chat_session_id=chat_session_id,
             message=message,
+            harness_key=(
+                harness.identity.key if harness is not None else self._default_harness_key
+            ),
+            harness_version=(harness.identity.version if harness is not None else None),
         )
 
     def get_turn_state(self, *, client_id: str, request_id: str) -> ChatTurnRequestState | None:

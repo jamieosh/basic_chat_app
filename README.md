@@ -22,6 +22,7 @@ Those documents define the long-term direction and maturity phases. This README 
 - Lightweight loading feedback while switching chats.
 - Inline failure handling for validation, service-unavailable, and transport-error states.
 - OpenAI-backed chat harness implementation (`gpt-5-mini` by default).
+- Startup-wired harness registry plus stable per-chat harness binding (`harness_key` with optional version metadata).
 - SQLite-backed chat storage with per-client chat ownership and transcript persistence across reloads and restarts.
 - Prompt-template-driven system and user prompt construction.
 - Neutral `AI Chat` defaults with no implicit domain context beyond the persisted transcript for the active chat.
@@ -77,6 +78,7 @@ At that time, Phase 1 did not include:
 ## Send Reliability Policy
 
 - Each chat send includes a persisted request ID so exact duplicate POSTs for the same browser/client replay the stored outcome instead of creating duplicate turns.
+- Each chat session persists a stable harness binding, so later sends resolve through the same configured harness key for the life of that chat.
 - If a target chat is already missing, foreign, deleted, or archived when `/send-message-htmx` starts, the route returns `404` and persists nothing for that request.
 - Once a send is accepted, the user turn is durable even if the assistant reply fails later.
 - If a chat is deleted or archived while a send is already in flight, delete/archive wins: the user turn remains, the assistant turn is not persisted, and the route returns `409`.
@@ -109,7 +111,12 @@ OPENAI_API_KEY=your_api_key_here
 CHAT_DATABASE_PATH=data/chat.db
 ```
 
-6. Run the application:
+6. Optional: set the default shipped harness key. The current repository ships only `openai`, so the default should normally stay unchanged:
+```dotenv
+DEFAULT_CHAT_HARNESS_KEY=openai
+```
+
+7. Run the application:
 ```bash
 uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
@@ -175,8 +182,10 @@ basic_chat_app/
 ├── agents/                 # Chat harness contracts and implementations
 │   ├── base_agent.py      # Legacy compatibility shim and harness re-exports
 │   ├── chat_harness.py    # Core ChatHarness contract and normalized types
+│   ├── harness_registry.py # Startup-time harness registry and binding resolution
 │   └── openai_agent.py    # OpenAI-specific harness implementation
 ├── persistence/           # SQLite bootstrap and chat repository code
+├── services/              # Turn lifecycle and harness-resolution control layer
 ├── static/                # Static assets
 │   ├── css/              # CSS styles
 │   └── js/               # JavaScript files
@@ -246,11 +255,11 @@ uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 
 ### Adding New Features
 
-1. **New Harness Types**: Implement `ChatHarness` in `agents/chat_harness.py`. `BaseAgent` remains available only as a compatibility shim for legacy `process_message()` implementations.
+1. **New Harness Types**: Implement `ChatHarness` in `agents/chat_harness.py`, register the implementation in `agents/harness_registry.py`, and keep route handlers unaware of provider-specific selection logic. `BaseAgent` remains available only as a compatibility shim for legacy `process_message()` implementations.
 2. **Custom Prompts**: Add new templates in `templates/prompts/<agent_type>/`
 3. **UI Components**: Add new components in `templates/components/`
 
-The application layer should own routing, persistence, idempotent turn lifecycle, and HTML rendering. The harness layer should own normalized request/result/failure contracts, observability metadata, prompt assembly, and provider-facing execution.
+The application layer should own routing, persistence, idempotent turn lifecycle, and HTML rendering. The small control/service layer should own chat-bound harness resolution. The harness layer should own normalized request/result/failure contracts, observability metadata, prompt assembly, and provider-facing execution.
 
 ### Configuration
 
@@ -258,6 +267,7 @@ The application layer should own routing, persistence, idempotent turn lifecycle
 - Prompt templates can be customized in `templates/prompts/`
 - UI styling can be adjusted in `static/css/chat.css`
 - Runtime configuration is environment-driven through `.env` or process env vars.
+- Harness selection defaults are environment-driven through `DEFAULT_CHAT_HARNESS_KEY`, while persisted chats keep their existing binding after creation.
 
 Supported runtime environment variables:
 

@@ -36,6 +36,7 @@ def client(tmp_path):
         cors_allow_credentials=False,
         cors_allowed_methods=["*"],
         cors_allowed_headers=["*"],
+        default_harness_key="openai",
     )
     with TestClient(main.create_app(settings=settings)) as test_client:
         yield test_client

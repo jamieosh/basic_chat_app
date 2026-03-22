@@ -17,7 +17,9 @@ from agents.base_agent import (
     ChatHarnessIdentity,
     ConversationTurn,
 )
+from agents.harness_registry import HarnessRegistry
 from agents.openai_agent import EmptyModelResponseError
+from services import ChatTurnService
 from utils import diagnostics
 from utils.client_identity import CLIENT_ID_COOKIE_MAX_AGE_SECONDS, CLIENT_ID_COOKIE_NAME
 from utils.diagnostics import StartupDiagnosticsError
@@ -74,6 +76,7 @@ def test_readiness_check_reports_ready_state(client):
 
 
 def test_readiness_check_returns_503_when_harness_is_missing(client):
+    del client.app.state.chat_harness_registry
     del client.app.state.chat_harness
 
     response = client.get("/health/ready")
@@ -224,6 +227,7 @@ def test_format_chat_list_timestamp_shows_month_and_day_for_older_dates():
 
 
 def test_home_renders_unavailable_shell_when_harness_is_missing(client):
+    del client.app.state.chat_harness_registry
     del client.app.state.chat_harness
 
     response = client.get("/")
@@ -958,6 +962,7 @@ def test_send_message_first_message_failure_still_returns_created_chat_session_i
 
 
 def test_send_message_returns_service_unavailable_html_when_harness_is_missing(client):
+    del client.app.state.chat_harness_registry
     del client.app.state.chat_harness
 
     response = _send_message(client, {"message": "Hi"})
@@ -1012,6 +1017,84 @@ def test_send_message_offloads_blocking_harness_call_from_event_loop(client, mon
     assert captured["request"].message == "Hi"
     assert captured["request"].conversation_history == ()
     assert "Hello from thread" in response.text
+
+
+def test_send_message_uses_chat_bound_harness_for_follow_up_send(client, monkeypatch):
+    class FakeAltHarness:
+        @property
+        def identity(self):
+            return ChatHarnessIdentity(
+                key="fake-alt",
+                display_name="Alt Bot",
+                model_display_name="Alt Model",
+            )
+
+        def run(self, request):
+            return types.SimpleNamespace(output_text=f"alt:{request.message}")
+
+    alt_harness = FakeAltHarness()
+    client.app.state.chat_harness_registry = HarnessRegistry(
+        {
+            "openai": client.app.state.chat_harness,
+            "fake-alt": alt_harness,
+        },
+        default_key="openai",
+    )
+    client.app.state.chat_turn_service = ChatTurnService(
+        client.app.state.chat_repository,
+        client.app.state.chat_harness_registry,
+    )
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    bound_chat = client.app.state.chat_repository.create_chat(
+        client_id="client-a",
+        title="Bound chat",
+        harness_key="fake-alt",
+    )
+
+    def raise_if_default_harness_used(_request):
+        raise AssertionError("Follow-up send should resolve the persisted chat binding.")
+
+    monkeypatch.setattr(client.app.state.chat_harness, "run", raise_if_default_harness_used)
+
+    response = _send_message(
+        client,
+        {
+            "message": "Hello from alt",
+            "chat_session_id": str(bound_chat.id),
+        },
+    )
+
+    assert response.status_code == 200
+    assert "alt:Hello from alt" in response.text
+
+
+def test_send_message_returns_503_when_chat_binding_cannot_be_resolved(client):
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    broken_chat = client.app.state.chat_repository.create_chat(
+        client_id="client-a",
+        title="Broken binding",
+        harness_key="missing",
+    )
+
+    response = _send_message(
+        client,
+        {
+            "message": "Hello from broken binding",
+            "chat_session_id": str(broken_chat.id),
+            "request_id": "broken-binding-request",
+        },
+    )
+    turn_request_state = client.app.state.chat_repository.get_turn_request_state(
+        client_id="client-a",
+        request_id="broken-binding-request",
+    )
+
+    assert response.status_code == 503
+    assert "Service Unavailable" in response.text
+    assert "configured chat harness is not available" in response.text
+    assert turn_request_state is not None
+    assert turn_request_state.turn_request.status == "failed"
+    assert turn_request_state.turn_request.failure_code == "harness_unavailable"
 
 
 def test_send_message_rejects_blank_messages(client):
@@ -1186,6 +1269,7 @@ def test_send_message_handles_runtime_error_without_except_typeerror(client, mon
 
 
 def test_get_chat_harness_raises_503_when_harness_is_unavailable(client):
+    del client.app.state.chat_harness_registry
     del client.app.state.chat_harness
 
     with pytest.raises(HTTPException) as exc_info:
@@ -1220,16 +1304,11 @@ def test_render_error_message_escapes_body_and_sets_status_code():
 
 
 def test_create_app_defers_logging_and_harness_init_until_startup(monkeypatch):
-    calls = {"init_logging": 0, "harness_ctor": 0}
+    calls = {"init_logging": 0, "registry_builder": 0}
 
-    class FakeAgent:
-        def __init__(self, api_key, model, prompt_name, temperature, timeout):
-            calls["harness_ctor"] += 1
-            self.api_key = api_key
-            self.model = model
-            self.prompt_name = prompt_name
-            self.temperature = temperature
-            self.timeout = timeout
+    class FakeHarness:
+        def __init__(self):
+            self.model = "gpt-5-mini"
 
         @property
         def identity(self):
@@ -1242,20 +1321,32 @@ def test_create_app_defers_logging_and_harness_init_until_startup(monkeypatch):
         def process_message(self, _msg, _history=None):
             return "unused"
 
+    class FakeRegistry:
+        def __init__(self):
+            self._harness = FakeHarness()
+
+        def default(self):
+            return self._harness
+
     def fake_init_logging():
         calls["init_logging"] += 1
 
-    monkeypatch.setattr(main, "OpenAIAgent", FakeAgent)
+    def fake_build_chat_harness_registry(_settings):
+        calls["registry_builder"] += 1
+        return FakeRegistry()
+
+    monkeypatch.setattr(main, "build_chat_harness_registry", fake_build_chat_harness_registry)
     monkeypatch.setattr(main, "init_logging", fake_init_logging)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
     app = main.create_app()
-    assert calls == {"init_logging": 0, "harness_ctor": 0}
+    assert calls == {"init_logging": 0, "registry_builder": 0}
 
     with TestClient(app) as startup_client:
-        assert calls == {"init_logging": 1, "harness_ctor": 1}
+        assert calls == {"init_logging": 1, "registry_builder": 1}
         assert startup_client.app.state.chat_harness.identity.display_name == "Fake Bot"
         assert startup_client.app.state.chat_harness.model == "gpt-5-mini"
+        assert startup_client.app.state.chat_harness_registry.default().identity.key == "fake-harness"
 
 
 def test_create_app_fails_with_clear_message_when_openai_key_missing(monkeypatch):
@@ -1269,7 +1360,11 @@ def test_create_app_fails_with_clear_message_when_openai_key_missing(monkeypatch
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr(main, "load_project_env", lambda: False)
     monkeypatch.setattr(main, "init_logging", fake_init_logging)
-    monkeypatch.setattr(main, "OpenAIAgent", NeverCalledAgent)
+    monkeypatch.setattr(
+        main,
+        "build_chat_harness_registry",
+        lambda _settings: (_ for _ in ()).throw(AssertionError("Registry should not be built")),
+    )
 
     app = main.create_app()
     expected = (
@@ -1277,6 +1372,24 @@ def test_create_app_fails_with_clear_message_when_openai_key_missing(monkeypatch
         "Missing required environment variable OPENAI_API_KEY"
     )
     with pytest.raises(StartupDiagnosticsError, match=expected):
+        with TestClient(app):
+            pass
+
+
+def test_create_app_fails_with_clear_message_when_default_harness_key_is_unknown(monkeypatch):
+    def fake_init_logging():
+        return None
+
+    monkeypatch.setattr(main, "init_logging", fake_init_logging)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("DEFAULT_CHAT_HARNESS_KEY", "missing")
+
+    app = main.create_app()
+    expected = (
+        "Startup diagnostics failed: harness_initialization: "
+        "Failed to initialize the chat harness. Unknown default chat harness key 'missing'."
+    )
+    with pytest.raises(StartupDiagnosticsError, match=re.escape(expected)):
         with TestClient(app):
             pass
 
