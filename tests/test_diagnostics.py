@@ -199,3 +199,30 @@ def test_build_readiness_payload_includes_harness_identity_metadata_when_ready()
             },
         ],
     }
+
+
+def test_build_readiness_payload_preserves_non_default_harness_metadata():
+    status_code, payload = diagnostics.build_readiness_payload(
+        startup_complete=True,
+        harness_initialized=True,
+        storage_initialized=True,
+        harness_metadata={
+            "harness_key": "fake-alt",
+            "harness_version": "v2",
+            "provider_name": "fake-provider",
+            "model": "Fake Alt Model",
+        },
+    )
+
+    assert status_code == 200
+    assert payload["checks"][1] == {
+        "name": "harness_initialized",
+        "status": "ok",
+        "detail": "Chat harness is initialized.",
+        "metadata": {
+            "harness_key": "fake-alt",
+            "harness_version": "v2",
+            "provider_name": "fake-provider",
+            "model": "Fake Alt Model",
+        },
+    }
