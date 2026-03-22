@@ -52,10 +52,13 @@ Result and event invariants need to stay strict enough that duplicate replay, co
 
 ## Definition of Done
 - [x] All acceptance criteria checked off
-- [ ] All new or updated tests pass
+- [x] All new or updated tests pass
 - [ ] `uv run ruff check .` passes
 - [ ] `uv run mypy .` passes
 - [ ] `uv run python -m pytest` passes
+- [x] `uv run ruff check .` passes
+- [x] `uv run mypy .` passes
+- [x] `uv run python -m pytest` passes
 - [ ] `README.md` updated if user-visible behavior changed
 - [ ] E2E or visual checks run when UI behavior changes materially
 - [ ] `CHANGELOG.md` updated when the feature ships
