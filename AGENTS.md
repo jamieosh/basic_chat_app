@@ -47,7 +47,7 @@ Current stage:
   - `harness_registry.py`: startup-time harness construction plus stable binding resolution
   - `openai_agent.py`: default OpenAI-backed harness adapter with provider-specific request construction, default context assembly, and error normalization
 - `services/`
-  - `chat_turns.py`: small control/service layer for turn-request lifecycle, harness resolution, harness-request construction, failure presentation, and idempotent replay coordination
+  - `chat_turns.py`: small control/service layer for turn-request lifecycle, harness resolution, normalized execution/failure finalization, failure presentation, observability shaping, and idempotent replay coordination
 - `persistence/`
   - `db.py`: SQLite bootstrap and additive schema/backfill for persisted harness binding columns
   - `repository.py`: chat, message, persisted harness binding, and turn-request persistence helpers
@@ -107,6 +107,7 @@ Current stage:
 - Follow-up sends append to the same persisted chat until the user starts a new chat or switches chats.
 - Duplicate request IDs replay the stored outcome instead of creating duplicate turns.
 - The app layer now depends on normalized harness contracts, registry-backed harness resolution, and persisted chat binding rather than provider SDK exceptions or route-owned harness selection.
+- The control/service layer now owns normalized harness execution coordination, persisted failure finalization, and per-turn observability shaping so routes can stay focused on HTTP validation and rendering.
 - The default shipped runtime remains OpenAI-backed, but provider-specific behavior and failure translation should stay inside harness adapter code.
 - The harness contract can now represent tool-call and tool-result activity in-memory without changing the current persisted transcript or HTMX response flow.
 - New chats are created with the default configured harness binding and keep that binding for their lifetime.
@@ -132,6 +133,7 @@ Current stage:
 - Keep prompt assembly and memory/context shaping behind harness-owned context builders rather than in routes.
 - Keep tool-call vocabulary, tool-result handling, and any future tool orchestration hooks behind the harness contract rather than adding tool-specific branching to routes.
 - Keep default harness selection and binding resolution behind `agents/harness_registry.py` and the small service/control layer rather than in routes.
+- Keep normalized harness execution/failure handling and observability shaping in `services/chat_turns.py` rather than rebuilding those concerns inside routes.
 - Prefer native `run_events()` implementations for provider-backed harnesses, with `run()` left as the shared collector; keep `BaseAgent` and `process_message()` only as compatibility shims for older agent code.
 - If you update model behavior, keep prompt templates, settings defaults, harness registry defaults, and persisted binding expectations in sync.
 - If you ship a backlog item, keep `README.md`, `AGENTS.md`, `CHANGELOG.md`, and the matching `plans/` backlog/done files aligned.

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Literal
 
 from agents.harness_registry import HarnessRegistry, HarnessResolutionError
 from agents.chat_harness import (
     ChatHarness,
+    ChatHarnessExecutionError,
+    ChatHarnessObservability,
     ChatHarnessRequest,
     ChatHarnessResult,
     collect_harness_events,
@@ -25,6 +28,75 @@ class FailurePresentation:
     body: str
     status_code: int
     log_event: str
+
+
+@dataclass(frozen=True)
+class ChatTurnObservability:
+    harness_key: str | None = None
+    harness_version: str | None = None
+    provider_name: str | None = None
+    model: str | None = None
+    request_id: str | None = None
+    failure_code: str | None = None
+    tags: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "tags", dict(self.tags))
+
+    @classmethod
+    def from_harness(
+        cls,
+        harness: ChatHarness,
+        *,
+        request_id: str | None = None,
+        failure_code: str | None = None,
+        model: str | None = None,
+        tags: dict[str, str] | None = None,
+    ) -> ChatTurnObservability:
+        return cls(
+            harness_key=harness.identity.key,
+            harness_version=harness.identity.version,
+            provider_name=harness.identity.provider_name,
+            model=model,
+            request_id=request_id,
+            failure_code=failure_code,
+            tags={} if tags is None else tags,
+        )
+
+    def identity_metadata(self) -> dict[str, str]:
+        metadata: dict[str, str] = {}
+        if self.harness_key is not None:
+            metadata["harness_key"] = self.harness_key
+        if self.harness_version is not None:
+            metadata["harness_version"] = self.harness_version
+        if self.provider_name is not None:
+            metadata["provider_name"] = self.provider_name
+        if self.model is not None:
+            metadata["model"] = self.model
+        return metadata
+
+
+@dataclass(frozen=True)
+class ChatTurnExecutionResult:
+    outcome: Literal["succeeded", "failed"]
+    response_harness: ChatHarness
+    turn_request_state: ChatTurnRequestState
+    observability: ChatTurnObservability
+    output_text: str | None = None
+    failure_presentation: FailurePresentation | None = None
+
+    def __post_init__(self) -> None:
+        if self.outcome == "succeeded":
+            if self.output_text is None:
+                raise ValueError("Successful execution results require output_text.")
+            if self.failure_presentation is not None:
+                raise ValueError("Successful execution results cannot include failure_presentation.")
+            return
+
+        if self.failure_presentation is None:
+            raise ValueError("Failed execution results require failure_presentation.")
+        if self.output_text is not None:
+            raise ValueError("Failed execution results cannot include output_text.")
 
 
 FAILURE_PRESENTATIONS = {
@@ -141,6 +213,12 @@ class ChatTurnService:
             )
         return self.resolve_harness_for_chat_session(turn_state.chat_session)
 
+    def response_harness_for_turn_state(self, turn_state: ChatTurnRequestState) -> ChatHarness:
+        try:
+            return self.resolve_harness_for_turn_state(turn_state)
+        except HarnessResolutionError:
+            return self.default_harness()
+
     def start_turn(
         self,
         *,
@@ -214,3 +292,147 @@ class ChatTurnService:
             request_id=request_id,
             failure_code=failure_code,
         )
+
+    def execute_started_turn(
+        self,
+        *,
+        client_id: str,
+        request_id: str,
+        start_result: StartTurnRequestResult,
+        message: str,
+    ) -> ChatTurnExecutionResult:
+        turn_request_state = start_result.turn_request_state
+        if turn_request_state is None:  # pragma: no cover - defensive against repository contract
+            raise RuntimeError("Turn request start result is missing its state.")
+
+        try:
+            harness = self.resolve_harness_for_turn_state(turn_request_state)
+        except HarnessResolutionError:
+            failed_state = self.fail_turn(
+                client_id=client_id,
+                request_id=request_id,
+                failure_code="harness_unavailable",
+            )
+            return ChatTurnExecutionResult(
+                outcome="failed",
+                response_harness=self.default_harness(),
+                turn_request_state=failed_state,
+                observability=self._build_turn_observability(
+                    request_id=request_id,
+                    chat_session=turn_request_state.chat_session,
+                    failure_code="harness_unavailable",
+                ),
+                failure_presentation=failure_presentation("harness_unavailable"),
+            )
+
+        harness_request = self.build_harness_request(
+            client_id=client_id,
+            request_id=request_id,
+            start_result=start_result,
+            message=message,
+        )
+
+        try:
+            harness_result = self.execute_harness_request(
+                harness=harness,
+                harness_request=harness_request,
+            )
+        except ValueError:
+            raise
+        except ChatHarnessExecutionError as exc:
+            failed_state = self.fail_turn(
+                client_id=client_id,
+                request_id=request_id,
+                failure_code=exc.failure.code,
+            )
+            return ChatTurnExecutionResult(
+                outcome="failed",
+                response_harness=harness,
+                turn_request_state=failed_state,
+                observability=self._build_turn_observability(
+                    request_id=request_id,
+                    chat_session=turn_request_state.chat_session,
+                    harness=harness,
+                    harness_observability=None,
+                    failure_code=exc.failure.code,
+                ),
+                failure_presentation=failure_presentation(exc.failure.code),
+            )
+        except Exception:
+            failed_state = self.fail_turn(
+                client_id=client_id,
+                request_id=request_id,
+                failure_code="unexpected_error",
+            )
+            return ChatTurnExecutionResult(
+                outcome="failed",
+                response_harness=harness,
+                turn_request_state=failed_state,
+                observability=self._build_turn_observability(
+                    request_id=request_id,
+                    chat_session=turn_request_state.chat_session,
+                    harness=harness,
+                    harness_observability=None,
+                    failure_code="unexpected_error",
+                ),
+                failure_presentation=failure_presentation("unexpected_error"),
+            )
+
+        output_text = harness_result.output_text
+        if output_text is None:  # pragma: no cover - enforced by ChatHarnessResult invariants
+            raise RuntimeError("Harness result is missing its output text.")
+
+        completed_state = self.complete_turn(
+            client_id=client_id,
+            request_id=request_id,
+            assistant_content=output_text,
+        )
+        return ChatTurnExecutionResult(
+            outcome="succeeded",
+            response_harness=harness,
+            turn_request_state=completed_state,
+            observability=self._build_turn_observability(
+                request_id=request_id,
+                chat_session=turn_request_state.chat_session,
+                harness=harness,
+                harness_observability=harness_result.observability,
+            ),
+            output_text=output_text,
+        )
+
+    def _build_turn_observability(
+        self,
+        *,
+        request_id: str,
+        chat_session: ChatSession | None,
+        harness: ChatHarness | None = None,
+        harness_observability: ChatHarnessObservability | None = None,
+        failure_code: str | None = None,
+    ) -> ChatTurnObservability:
+        harness_identity = None if harness is None else harness.identity
+        observability = ChatTurnObservability(
+            harness_key=(
+                harness_identity.key
+                if harness_identity is not None
+                else (None if chat_session is None else chat_session.harness_key)
+            ),
+            harness_version=(
+                harness_identity.version
+                if harness_identity is not None
+                else (None if chat_session is None else chat_session.harness_version)
+            ),
+            provider_name=(
+                harness_identity.provider_name
+                if harness_identity is not None
+                else (None if harness_observability is None else harness_observability.provider)
+            ),
+            model=None if harness_observability is None else harness_observability.model,
+            request_id=(
+                request_id
+                if harness_observability is None or harness_observability.request_id is None
+                else harness_observability.request_id
+            ),
+            failure_code=failure_code,
+            tags={} if harness_observability is None else harness_observability.tags,
+        )
+        return observability

@@ -16,7 +16,6 @@ from fastapi.templating import Jinja2Templates
 
 from agents.base_agent import (
     ChatHarness,
-    ChatHarnessExecutionError,
 )
 from agents.harness_registry import (
     HarnessRegistry,
@@ -31,7 +30,7 @@ from persistence import (
     StorageInitializationError,
     bootstrap_database,
 )
-from services import ChatTurnService, failure_presentation
+from services import ChatTurnObservability, ChatTurnService, failure_presentation
 from utils.diagnostics import (
     DiagnosticCheck,
     StartupDiagnosticsError,
@@ -249,10 +248,19 @@ def _chat_service_unavailable_detail(app: FastAPI) -> str:
 
 
 def _readiness_status(app: FastAPI) -> tuple[int, dict[str, object]]:
+    harness_observability: ChatTurnObservability | None = None
+    if hasattr(app.state, "chat_harness"):
+        harness_observability = ChatTurnObservability.from_harness(
+            app.state.chat_harness,
+            model=app.state.chat_harness.model if hasattr(app.state.chat_harness, "model") else None,
+        )
     return build_readiness_payload(
         startup_complete=bool(getattr(app.state, "startup_complete", False)),
         harness_initialized=hasattr(app.state, "chat_harness_registry"),
         storage_initialized=hasattr(app.state, "chat_repository"),
+        harness_metadata=(
+            None if harness_observability is None else harness_observability.identity_metadata()
+        ),
     )
 
 
@@ -673,9 +681,16 @@ async def lifespan(app: FastAPI):
         ) from exc
 
     _set_startup_state(app, startup_complete=True)
+    startup_observability = ChatTurnObservability.from_harness(
+        app.state.chat_harness,
+        model=app.state.chat_harness.model if hasattr(app.state.chat_harness, "model") else None,
+    )
     logger.info(
-        "startup.ready model=%s harness=%s",
-        _chat_harness_model_display_name(app.state.chat_harness),
+        "startup.ready harness_key=%s harness_version=%s provider=%s model=%s harness=%s",
+        startup_observability.harness_key,
+        startup_observability.harness_version,
+        startup_observability.provider_name,
+        startup_observability.model or _chat_harness_model_display_name(app.state.chat_harness),
         _chat_harness_display_name(app.state.chat_harness),
     )
     try:
@@ -1032,7 +1047,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             if start_result.turn_request_state is None:  # pragma: no cover - defensive
                 raise RuntimeError("Turn request start result is missing its state.")
 
-            chat_harness = chat_turn_service.resolve_harness_for_turn_state(
+            chat_harness = chat_turn_service.response_harness_for_turn_state(
                 start_result.turn_request_state
             )
             active_chat_session_id = start_result.turn_request_state.turn_request.chat_session_id
@@ -1093,25 +1108,16 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 client_id,
                 resolved_request_id,
             )
-            harness_request = chat_turn_service.build_harness_request(
+            execution_result = await asyncio.to_thread(
+                chat_turn_service.execute_started_turn,
                 client_id=client_id,
                 request_id=resolved_request_id,
                 start_result=start_result,
                 message=message,
             )
-
-            harness_result = await asyncio.to_thread(
-                chat_turn_service.execute_harness_request,
-                harness=chat_harness,
-                harness_request=harness_request,
-            )
-            response = cast(str, harness_result.output_text)
-            turn_request_state = await asyncio.to_thread(
-                chat_turn_service.complete_turn,
-                client_id=client_id,
-                request_id=resolved_request_id,
-                assistant_content=response,
-            )
+            chat_harness = execution_result.response_harness
+            turn_request_state = execution_result.turn_request_state
+            active_chat_session_id = turn_request_state.turn_request.chat_session_id
             html_response = _render_turn_request_state_response(
                 request,
                 chat_harness=chat_harness,
@@ -1121,14 +1127,39 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 timestamp=timestamp,
             )
 
+            if execution_result.outcome == "failed":
+                presentation = execution_result.failure_presentation
+                if presentation is None:  # pragma: no cover - enforced by result invariants
+                    raise RuntimeError("Failed execution result is missing its failure presentation.")
+                logger.warning(
+                    "%s failure_code=%s harness_key=%s harness_version=%s provider=%s model=%s request_id=%s",
+                    presentation.log_event,
+                    execution_result.observability.failure_code or "unknown_failure",
+                    execution_result.observability.harness_key,
+                    execution_result.observability.harness_version,
+                    execution_result.observability.provider_name,
+                    execution_result.observability.model,
+                    execution_result.observability.request_id,
+                )
+                return _finalize_response_with_client_cookie(
+                    html_response,
+                    client_id=client_id,
+                    should_set_cookie=should_set_client_cookie,
+                )
+
+            response = cast(str, execution_result.output_text)
             logger.info(
-                "chat.request_succeeded request_chars=%s response_chars=%s chat_session_id=%s client_id=%s request_id=%s status=%s",
+                "chat.request_succeeded request_chars=%s response_chars=%s chat_session_id=%s client_id=%s request_id=%s status=%s harness_key=%s harness_version=%s provider=%s model=%s",
                 len(message),
                 len(response),
                 active_chat_session_id,
                 client_id,
                 resolved_request_id,
                 turn_request_state.turn_request.status,
+                execution_result.observability.harness_key,
+                execution_result.observability.harness_version,
+                execution_result.observability.provider_name,
+                execution_result.observability.model,
             )
             return _finalize_response_with_client_cookie(
                 html_response,
@@ -1144,61 +1175,6 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                     str(e),
                     timestamp,
                     400,
-                    chat_session_id=active_chat_session_id,
-                ),
-                client_id=client_id,
-                should_set_cookie=should_set_client_cookie,
-            )
-
-        except ChatHarnessExecutionError as exc:
-            presentation = failure_presentation(exc.failure.code)
-            _log_known_chat_error(presentation.log_event, exc)
-            turn_request_state = await asyncio.to_thread(
-                chat_turn_service.fail_turn,
-                client_id=client_id,
-                request_id=resolved_request_id or "",
-                failure_code=exc.failure.code,
-            )
-            return _finalize_response_with_client_cookie(
-                _render_turn_request_state_response(
-                    request,
-                    chat_harness=chat_harness,
-                    repository=repository,
-                    client_id=client_id,
-                    timestamp=timestamp,
-                    turn_request_state=turn_request_state,
-                ),
-                client_id=client_id,
-                should_set_cookie=should_set_client_cookie,
-            )
-
-        except HarnessResolutionError as exc:
-            _log_known_chat_error("chat.harness_unavailable", exc)
-            if resolved_request_id is not None:
-                turn_request_state = await asyncio.to_thread(
-                    chat_turn_service.fail_turn,
-                    client_id=client_id,
-                    request_id=resolved_request_id,
-                    failure_code="harness_unavailable",
-                )
-                return _finalize_response_with_client_cookie(
-                    _render_turn_request_state_response(
-                        request,
-                        chat_harness=chat_turn_service.default_harness(),
-                        repository=repository,
-                        client_id=client_id,
-                        timestamp=timestamp,
-                        turn_request_state=turn_request_state,
-                    ),
-                    client_id=client_id,
-                    should_set_cookie=should_set_client_cookie,
-                )
-            return _finalize_response_with_client_cookie(
-                _render_error_response(
-                    "Service Unavailable",
-                    "The configured chat harness is not available. Please try again later.",
-                    timestamp,
-                    503,
                     chat_session_id=active_chat_session_id,
                 ),
                 client_id=client_id,

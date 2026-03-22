@@ -152,6 +152,7 @@ def test_run_returns_chat_harness_result_with_openai_observability():
     assert result.observability.model == "gpt-5-mini"
     assert result.observability.request_id == "req-123"
     assert result.observability.tags["harness_key"] == "openai"
+    assert result.observability.tags["provider_name"] == "openai"
     assert result.metadata["model_display_name"] == "GPT-5 Mini"
 
 
@@ -175,6 +176,7 @@ def test_run_events_exposes_output_and_completion_with_openai_metadata():
     assert events[0].output_text == "Harness reply"
     assert events[0].observability.provider == "openai"
     assert events[0].observability.request_id == "req-123"
+    assert events[0].observability.tags["provider_name"] == "openai"
     assert events[0].metadata["model_display_name"] == "GPT-5 Mini"
     assert events[1].output_text is None
     assert events[1].finish_reason == "completed"

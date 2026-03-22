@@ -2,6 +2,14 @@
 
 ## 2026-03-22
 
+### Ship Phase 3 Control-Layer Refactor, Error Handling, And Harness Observability
+
+- Refactored `services/chat_turns.py` and `main.py` so the small control/service layer now owns normalized started-turn execution, harness-resolution fallback, failure finalization, and per-turn observability while the route stays focused on validation and HTMX rendering.
+- Extended `utils/diagnostics.py` and `agents/openai_agent.py` so readiness and runtime logging now expose normalized harness identity details and the default OpenAI adapter emits provider identity consistently in observability tags.
+- Expanded regression coverage in `tests/test_chat_turn_service.py`, `tests/test_main_routes.py`, `tests/test_diagnostics.py`, and `tests/test_openai_agent.py` to lock success, failure, duplicate replay, harness-unavailable fallback, conflict handling, and readiness metadata behavior through the refactored control-layer path.
+- Updated `README.md`, `AGENTS.md`, `plans/PHASE 3 BACKLOG.md`, and `plans/done/PHASE 3 DONE.md` so contributor-facing docs and Phase 3 planning records describe the shipped control-layer and observability responsibilities consistently.
+- Verification passed with `uv run ruff check .`, `uv run mypy .`, and `uv run python -m pytest` (`223 passed`).
+
 ### Ship Phase 3 Tool Hook And Capability Foundation
 
 - Extended `agents/chat_harness.py`, `agents/base_agent.py`, and `agents/__init__.py` so the Phase 3 harness contract now includes normalized tool capability metadata, tool-call/tool-result payload types, and an optional `execute_tool_call()` seam without changing the current non-streaming app flow.
