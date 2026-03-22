@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from agents.base_agent import (
+    ChatHarnessEvent,
     ChatHarnessExecutionError,
     ChatHarnessFailure,
     ChatHarnessIdentity,
@@ -38,6 +39,29 @@ def _send_message(client, data: dict[str, str] | None = None):
     payload = dict(data or {})
     payload.setdefault("request_id", f"request-{next(_REQUEST_ID_COUNTER)}")
     return client.post("/send-message-htmx", data=payload)
+
+
+def _patch_harness_reply(monkeypatch, harness, reply_factory):
+    def run_events(request):
+        reply = reply_factory(request)
+        yield ChatHarnessEvent(
+            event_type="output_text",
+            output_text=reply,
+            sequence=0,
+        )
+        yield ChatHarnessEvent(
+            event_type="completed",
+            sequence=1,
+        )
+
+    monkeypatch.setattr(harness, "run_events", run_events)
+
+
+def _patch_harness_failure(monkeypatch, harness, failure_factory):
+    def run_events(request):
+        raise failure_factory(request)
+
+    monkeypatch.setattr(harness, "run_events", run_events)
 
 
 def test_health_check(client):
@@ -250,11 +274,7 @@ def test_home_renders_unavailable_shell_when_storage_is_missing(client):
 
 
 def test_send_message_returns_bot_message_html(client, monkeypatch):
-    monkeypatch.setattr(
-        client.app.state.chat_harness,
-        "run",
-        lambda _request: types.SimpleNamespace(output_text="Hello from test"),
-    )
+    _patch_harness_reply(monkeypatch, client.app.state.chat_harness, lambda _request: "Hello from test")
 
     response = _send_message(client, {"message": "Hi"})
 
@@ -265,11 +285,7 @@ def test_send_message_returns_bot_message_html(client, monkeypatch):
 
 
 def test_send_message_sets_anonymous_client_cookie_when_missing(client, monkeypatch):
-    monkeypatch.setattr(
-        client.app.state.chat_harness,
-        "run",
-        lambda _request: types.SimpleNamespace(output_text="Hello from test"),
-    )
+    _patch_harness_reply(monkeypatch, client.app.state.chat_harness, lambda _request: "Hello from test")
 
     response = _send_message(client, {"message": "Hi"})
 
@@ -279,11 +295,7 @@ def test_send_message_sets_anonymous_client_cookie_when_missing(client, monkeypa
 
 
 def test_send_message_creates_chat_and_persists_first_turn(client, monkeypatch):
-    monkeypatch.setattr(
-        client.app.state.chat_harness,
-        "run",
-        lambda _request: types.SimpleNamespace(output_text="Hello from test"),
-    )
+    _patch_harness_reply(monkeypatch, client.app.state.chat_harness, lambda _request: "Hello from test")
 
     response = _send_message(client, {"message": "Hi"})
 
@@ -311,11 +323,11 @@ def test_send_message_creates_chat_and_persists_first_turn(client, monkeypatch):
 def test_send_message_replays_duplicate_first_submit_without_duplicate_turns(client, monkeypatch):
     call_count = {"count": 0}
 
-    def fake_run(_request):
+    def fake_reply(_request):
         call_count["count"] += 1
-        return types.SimpleNamespace(output_text="Hello from test")
+        return "Hello from test"
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", fake_run)
+    _patch_harness_reply(monkeypatch, client.app.state.chat_harness, fake_reply)
 
     first_response = _send_message(
         client,
@@ -348,11 +360,11 @@ def test_send_message_replays_duplicate_first_submit_without_duplicate_turns(cli
 def test_send_message_appends_to_existing_chat_instead_of_creating_another(client, monkeypatch):
     call_count = {"count": 0}
 
-    def fake_run(_request):
+    def fake_reply(_request):
         call_count["count"] += 1
-        return types.SimpleNamespace(output_text=f"Reply {call_count['count']}")
+        return f"Reply {call_count['count']}"
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", fake_run)
+    _patch_harness_reply(monkeypatch, client.app.state.chat_harness, fake_reply)
 
     first_response = _send_message(client, {"message": "Hi"})
     chat_session_id = _extract_chat_session_id(first_response.text)
@@ -385,11 +397,11 @@ def test_send_message_replays_duplicate_existing_chat_submit_without_duplicate_t
     chat = repository.create_chat(client_id="client-a", title="Chat 1")
     call_count = {"count": 0}
 
-    def fake_run(_request):
+    def fake_reply(_request):
         call_count["count"] += 1
-        return types.SimpleNamespace(output_text="Reply 1")
+        return "Reply 1"
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", fake_run)
+    _patch_harness_reply(monkeypatch, client.app.state.chat_harness, fake_reply)
 
     first_response = _send_message(
         client,
@@ -421,11 +433,11 @@ def test_send_message_replays_duplicate_existing_chat_submit_without_duplicate_t
 def test_send_message_passes_prior_transcript_to_agent_in_order(client, monkeypatch):
     captured_histories = []
 
-    def fake_run(request):
+    def fake_reply(request):
         captured_histories.append(list(request.conversation_history or []))
-        return types.SimpleNamespace(output_text="Reply")
+        return "Reply"
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", fake_run)
+    _patch_harness_reply(monkeypatch, client.app.state.chat_harness, fake_reply)
 
     first_response = _send_message(client, {"message": "First"})
     chat_session_id = _extract_chat_session_id(first_response.text)
@@ -441,6 +453,39 @@ def test_send_message_passes_prior_transcript_to_agent_in_order(client, monkeypa
         ConversationTurn(role="user", content="First"),
         ConversationTurn(role="assistant", content="Reply"),
     ]
+
+
+def test_send_message_collects_multiple_output_events_into_one_persisted_reply(client, monkeypatch):
+    def multi_event_reply(_request):
+        yield ChatHarnessEvent(
+            event_type="output_text",
+            output_text="Hello",
+            sequence=0,
+        )
+        yield ChatHarnessEvent(
+            event_type="output_text",
+            output_text=" from test",
+            sequence=1,
+        )
+        yield ChatHarnessEvent(
+            event_type="completed",
+            sequence=2,
+        )
+
+    monkeypatch.setattr(client.app.state.chat_harness, "run_events", multi_event_reply)
+
+    response = _send_message(client, {"message": "Hi"})
+
+    assert response.status_code == 200
+    assert "Hello from test" in response.text
+    chat_session_id = _extract_chat_session_id(response.text)
+    repository = client.app.state.chat_repository
+    client_id = client.cookies.get(CLIENT_ID_COOKIE_NAME)
+    messages = repository.list_messages_for_chat(
+        chat_session_id=chat_session_id,
+        client_id=client_id,
+    )
+    assert [message.content for message in messages] == ["Hi", "Hello from test"]
 
 
 def test_send_message_delegates_harness_request_construction_to_turn_service(client, monkeypatch):
@@ -463,10 +508,10 @@ def test_send_message_delegates_harness_request_construction_to_turn_service(cli
         "build_harness_request",
         fake_build_harness_request,
     )
-    monkeypatch.setattr(
+    _patch_harness_reply(
+        monkeypatch,
         client.app.state.chat_harness,
-        "run",
-        lambda request: types.SimpleNamespace(output_text=f"reply:{request.message}"),
+        lambda request: f"reply:{request.message}",
     )
 
     response = _send_message(client, {"message": "Hi"})
@@ -478,11 +523,7 @@ def test_send_message_delegates_harness_request_construction_to_turn_service(cli
 
 
 def test_send_message_returns_generic_not_found_for_missing_or_foreign_chat(client, monkeypatch):
-    monkeypatch.setattr(
-        client.app.state.chat_harness,
-        "run",
-        lambda _request: types.SimpleNamespace(output_text="unused"),
-    )
+    _patch_harness_reply(monkeypatch, client.app.state.chat_harness, lambda _request: "unused")
     client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
     repository = client.app.state.chat_repository
     foreign_chat = repository.create_chat(client_id="client-b", title="Other chat")
@@ -703,10 +744,19 @@ def test_send_message_persists_user_turn_without_assistant_reply_when_follow_up_
 ):
     call_count = {"count": 0}
 
-    def fake_run(_request):
+    def fake_run_events(_request):
         call_count["count"] += 1
         if call_count["count"] == 1:
-            return types.SimpleNamespace(output_text="Reply 1")
+            yield ChatHarnessEvent(
+                event_type="output_text",
+                output_text="Reply 1",
+                sequence=0,
+            )
+            yield ChatHarnessEvent(
+                event_type="completed",
+                sequence=1,
+            )
+            return
         raise ChatHarnessExecutionError(
             ChatHarnessFailure(
                 code="rate_limited",
@@ -716,7 +766,7 @@ def test_send_message_persists_user_turn_without_assistant_reply_when_follow_up_
             )
         )
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", fake_run)
+    monkeypatch.setattr(client.app.state.chat_harness, "run_events", fake_run_events)
 
     first_response = _send_message(client, {"message": "First"})
     chat_session_id = _extract_chat_session_id(first_response.text)
@@ -738,6 +788,40 @@ def test_send_message_persists_user_turn_without_assistant_reply_when_follow_up_
     assert [message.role for message in messages] == ["user", "assistant", "user"]
 
 
+def test_send_message_does_not_persist_partial_output_when_event_stream_fails(client, monkeypatch):
+    def partial_then_fail(_request):
+        yield ChatHarnessEvent(
+            event_type="output_text",
+            output_text="Partial reply",
+            sequence=0,
+        )
+        yield ChatHarnessEvent(
+            event_type="failed",
+            failure=ChatHarnessFailure(
+                code="rate_limited",
+                message="busy",
+                retryable=True,
+                detail="synthetic partial failure",
+            ),
+            sequence=1,
+        )
+
+    monkeypatch.setattr(client.app.state.chat_harness, "run_events", partial_then_fail)
+
+    response = _send_message(client, {"message": "First"})
+
+    assert response.status_code == 429
+    chat_session_id = _extract_chat_session_id(response.text)
+    repository = client.app.state.chat_repository
+    client_id = client.cookies.get(CLIENT_ID_COOKIE_NAME)
+    messages = repository.list_messages_for_chat(
+        chat_session_id=chat_session_id,
+        client_id=client_id,
+    )
+    assert [message.role for message in messages] == ["user"]
+    assert [message.content for message in messages] == ["First"]
+
+
 def test_send_message_replays_duplicate_failed_first_submit_without_reprocessing(client, monkeypatch):
     chat_turn_service = client.app.state.chat_turn_service
 
@@ -757,10 +841,10 @@ def test_send_message_replays_duplicate_failed_first_submit_without_reprocessing
     def raise_if_reprocessed(*_args, **_kwargs):
         raise AssertionError("Should replay failure")
 
-    monkeypatch.setattr(
+    _patch_harness_failure(
+        monkeypatch,
         client.app.state.chat_harness,
-        "run",
-        raise_if_reprocessed,
+        lambda _request: AssertionError("Should replay failure"),
     )
 
     response = _send_message(
@@ -801,10 +885,10 @@ def test_send_message_returns_request_in_progress_when_duplicate_request_is_stil
     def raise_if_duplicate_reprocessed(*_args, **_kwargs):
         raise AssertionError("Duplicate request should not invoke the agent.")
 
-    monkeypatch.setattr(
+    _patch_harness_failure(
+        monkeypatch,
         client.app.state.chat_harness,
-        "run",
-        raise_if_duplicate_reprocessed,
+        lambda _request: AssertionError("Duplicate request should not invoke the agent."),
     )
     monkeypatch.setattr(main, "_await_turn_request_resolution", return_processing_state)
 
@@ -832,9 +916,9 @@ def test_send_message_returns_409_when_chat_is_deleted_during_in_flight_send(cli
 
     def delete_then_reply(_request):
         repository.soft_delete_chat(chat_session_id=chat.id, client_id="client-a")
-        return types.SimpleNamespace(output_text="Reply that should not persist")
+        return "Reply that should not persist"
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", delete_then_reply)
+    _patch_harness_reply(monkeypatch, client.app.state.chat_harness, delete_then_reply)
 
     response = _send_message(
         client,
@@ -881,10 +965,10 @@ def test_send_message_replays_duplicate_conflicted_request_without_reprocessing(
     def raise_if_conflict_reprocessed(*_args, **_kwargs):
         raise AssertionError("Duplicate replay should not invoke the agent.")
 
-    monkeypatch.setattr(
+    _patch_harness_failure(
+        monkeypatch,
         client.app.state.chat_harness,
-        "run",
-        raise_if_conflict_reprocessed,
+        lambda _request: AssertionError("Duplicate replay should not invoke the agent."),
     )
 
     response = _send_message(
@@ -912,9 +996,9 @@ def test_send_message_returns_409_when_chat_is_archived_during_in_flight_send(cl
 
     def archive_then_reply(_request):
         repository.archive_chat(chat_session_id=chat.id, client_id="client-a")
-        return types.SimpleNamespace(output_text="Reply that should not persist")
+        return "Reply that should not persist"
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", archive_then_reply)
+    _patch_harness_reply(monkeypatch, client.app.state.chat_harness, archive_then_reply)
 
     response = _send_message(
         client,
@@ -949,7 +1033,7 @@ def test_send_message_returns_409_when_chat_is_archived_during_in_flight_failure
 
     def archive_then_raise(_request):
         repository.archive_chat(chat_session_id=chat.id, client_id="client-a")
-        raise ChatHarnessExecutionError(
+        return ChatHarnessExecutionError(
             ChatHarnessFailure(
                 code="rate_limited",
                 message="busy",
@@ -958,7 +1042,7 @@ def test_send_message_returns_409_when_chat_is_archived_during_in_flight_failure
             )
         )
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", archive_then_raise)
+    _patch_harness_failure(monkeypatch, client.app.state.chat_harness, archive_then_raise)
 
     response = _send_message(
         client,
@@ -986,7 +1070,7 @@ def test_send_message_first_message_failure_still_returns_created_chat_session_i
     client, monkeypatch
 ):
     def raise_rate_limit(_request):
-        raise ChatHarnessExecutionError(
+        return ChatHarnessExecutionError(
             ChatHarnessFailure(
                 code="rate_limited",
                 message="busy",
@@ -995,7 +1079,7 @@ def test_send_message_first_message_failure_still_returns_created_chat_session_i
             )
         )
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", raise_rate_limit)
+    _patch_harness_failure(monkeypatch, client.app.state.chat_harness, raise_rate_limit)
 
     response = _send_message(client, {"message": "First"})
 
@@ -1052,22 +1136,31 @@ def test_send_message_returns_startup_message_when_startup_is_incomplete(client)
 def test_send_message_offloads_blocking_harness_call_from_event_loop(client, monkeypatch):
     captured = {"calls": []}
 
-    def fake_run(chat_request):
+    def fake_run_events(chat_request):
         captured["request"] = chat_request
-        return types.SimpleNamespace(output_text="Hello from thread")
+        yield ChatHarnessEvent(
+            event_type="output_text",
+            output_text="Hello from thread",
+            sequence=0,
+        )
+        yield ChatHarnessEvent(
+            event_type="completed",
+            sequence=1,
+        )
 
     async def fake_to_thread(func, *args, **kwargs):
         captured["calls"].append((func, args, kwargs))
         return func(*args, **kwargs)
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", fake_run)
+    monkeypatch.setattr(client.app.state.chat_harness, "run_events", fake_run_events)
     monkeypatch.setattr(main.asyncio, "to_thread", fake_to_thread)
 
     response = _send_message(client, {"message": "Hi"})
 
     assert response.status_code == 200
-    assert captured["calls"][1][0] is fake_run
-    assert captured["calls"][1][2] == {}
+    assert captured["calls"][1][0].__name__ == "execute_harness_request"
+    assert captured["calls"][1][2]["harness"] is client.app.state.chat_harness
+    assert captured["calls"][1][2]["harness_request"] is captured["request"]
     assert captured["request"].message == "Hi"
     assert captured["request"].conversation_history == ()
     assert "Hello from thread" in response.text
@@ -1083,8 +1176,16 @@ def test_send_message_uses_chat_bound_harness_for_follow_up_send(client, monkeyp
                 model_display_name="Alt Model",
             )
 
-        def run(self, request):
-            return types.SimpleNamespace(output_text=f"alt:{request.message}")
+        def run_events(self, request):
+            yield ChatHarnessEvent(
+                event_type="output_text",
+                output_text=f"alt:{request.message}",
+                sequence=0,
+            )
+            yield ChatHarnessEvent(
+                event_type="completed",
+                sequence=1,
+            )
 
     alt_harness = FakeAltHarness()
     client.app.state.chat_harness_registry = HarnessRegistry(
@@ -1108,7 +1209,11 @@ def test_send_message_uses_chat_bound_harness_for_follow_up_send(client, monkeyp
     def raise_if_default_harness_used(_request):
         raise AssertionError("Follow-up send should resolve the persisted chat binding.")
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", raise_if_default_harness_used)
+    _patch_harness_failure(
+        monkeypatch,
+        client.app.state.chat_harness,
+        lambda _request: AssertionError("Follow-up send should resolve the persisted chat binding."),
+    )
 
     response = _send_message(
         client,
@@ -1169,9 +1274,9 @@ def test_send_message_requires_message_field(client):
 
 def test_send_message_validation_error_escapes_html(client, monkeypatch):
     def raise_value_error(_request):
-        raise ValueError("<b>bad input</b>")
+        return ValueError("<b>bad input</b>")
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", raise_value_error)
+    _patch_harness_failure(monkeypatch, client.app.state.chat_harness, raise_value_error)
     response = _send_message(client, {"message": "Hi"})
 
     assert response.status_code == 400
@@ -1181,7 +1286,7 @@ def test_send_message_validation_error_escapes_html(client, monkeypatch):
 
 def test_send_message_handles_rate_limit_failure(client, monkeypatch):
     def raise_rate_limit(_request):
-        raise ChatHarnessExecutionError(
+        return ChatHarnessExecutionError(
             ChatHarnessFailure(
                 code="rate_limited",
                 message="busy",
@@ -1190,7 +1295,7 @@ def test_send_message_handles_rate_limit_failure(client, monkeypatch):
             )
         )
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", raise_rate_limit)
+    _patch_harness_failure(monkeypatch, client.app.state.chat_harness, raise_rate_limit)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 429
@@ -1200,7 +1305,7 @@ def test_send_message_handles_rate_limit_failure(client, monkeypatch):
 
 def test_send_message_handles_normalized_harness_failure(client, monkeypatch):
     def raise_rate_limit_from_harness(_request):
-        raise ChatHarnessExecutionError(
+        return ChatHarnessExecutionError(
             ChatHarnessFailure(
                 code="rate_limited",
                 message="busy",
@@ -1209,7 +1314,7 @@ def test_send_message_handles_normalized_harness_failure(client, monkeypatch):
             )
         )
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", raise_rate_limit_from_harness)
+    _patch_harness_failure(monkeypatch, client.app.state.chat_harness, raise_rate_limit_from_harness)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 429
@@ -1218,7 +1323,7 @@ def test_send_message_handles_normalized_harness_failure(client, monkeypatch):
 
 def test_send_message_handles_authentication_failure(client, monkeypatch):
     def raise_auth_error(_request):
-        raise ChatHarnessExecutionError(
+        return ChatHarnessExecutionError(
             ChatHarnessFailure(
                 code="authentication_failed",
                 message="auth failed",
@@ -1227,7 +1332,7 @@ def test_send_message_handles_authentication_failure(client, monkeypatch):
             )
         )
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", raise_auth_error)
+    _patch_harness_failure(monkeypatch, client.app.state.chat_harness, raise_auth_error)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 401
@@ -1236,7 +1341,7 @@ def test_send_message_handles_authentication_failure(client, monkeypatch):
 
 def test_send_message_handles_connection_failure(client, monkeypatch):
     def raise_connection_error(_request):
-        raise ChatHarnessExecutionError(
+        return ChatHarnessExecutionError(
             ChatHarnessFailure(
                 code="connection_error",
                 message="conn",
@@ -1245,7 +1350,7 @@ def test_send_message_handles_connection_failure(client, monkeypatch):
             )
         )
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", raise_connection_error)
+    _patch_harness_failure(monkeypatch, client.app.state.chat_harness, raise_connection_error)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 503
@@ -1254,7 +1359,7 @@ def test_send_message_handles_connection_failure(client, monkeypatch):
 
 def test_send_message_handles_timeout_failure(client, monkeypatch):
     def raise_timeout_error(_request):
-        raise ChatHarnessExecutionError(
+        return ChatHarnessExecutionError(
             ChatHarnessFailure(
                 code="timeout",
                 message="timeout",
@@ -1263,7 +1368,7 @@ def test_send_message_handles_timeout_failure(client, monkeypatch):
             )
         )
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", raise_timeout_error)
+    _patch_harness_failure(monkeypatch, client.app.state.chat_harness, raise_timeout_error)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 504
@@ -1272,7 +1377,7 @@ def test_send_message_handles_timeout_failure(client, monkeypatch):
 
 def test_send_message_handles_invalid_request_failure(client, monkeypatch):
     def raise_bad_request_error(_request):
-        raise ChatHarnessExecutionError(
+        return ChatHarnessExecutionError(
             ChatHarnessFailure(
                 code="invalid_request",
                 message="bad request",
@@ -1281,7 +1386,7 @@ def test_send_message_handles_invalid_request_failure(client, monkeypatch):
             )
         )
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", raise_bad_request_error)
+    _patch_harness_failure(monkeypatch, client.app.state.chat_harness, raise_bad_request_error)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 502
@@ -1290,7 +1395,7 @@ def test_send_message_handles_invalid_request_failure(client, monkeypatch):
 
 def test_send_message_handles_provider_error_failure(client, monkeypatch):
     def raise_api_error(_request):
-        raise ChatHarnessExecutionError(
+        return ChatHarnessExecutionError(
             ChatHarnessFailure(
                 code="provider_error",
                 message="api failed",
@@ -1299,7 +1404,7 @@ def test_send_message_handles_provider_error_failure(client, monkeypatch):
             )
         )
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", raise_api_error)
+    _patch_harness_failure(monkeypatch, client.app.state.chat_harness, raise_api_error)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 500
@@ -1308,7 +1413,7 @@ def test_send_message_handles_provider_error_failure(client, monkeypatch):
 
 def test_send_message_handles_empty_response_failure(client, monkeypatch):
     def raise_empty_model_response(_request):
-        raise ChatHarnessExecutionError(
+        return ChatHarnessExecutionError(
             ChatHarnessFailure(
                 code="empty_response",
                 message="empty response",
@@ -1317,7 +1422,7 @@ def test_send_message_handles_empty_response_failure(client, monkeypatch):
             )
         )
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", raise_empty_model_response)
+    _patch_harness_failure(monkeypatch, client.app.state.chat_harness, raise_empty_model_response)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 502
@@ -1326,12 +1431,10 @@ def test_send_message_handles_empty_response_failure(client, monkeypatch):
 
 
 def test_send_message_renders_mixed_text_and_code_without_paragraph_wrapping(client, monkeypatch):
-    monkeypatch.setattr(
+    _patch_harness_reply(
+        monkeypatch,
         client.app.state.chat_harness,
-        "run",
-        lambda _request: types.SimpleNamespace(
-            output_text="Example:\n```python\nprint('ok')\n```\nDone."
-        ),
+        lambda _request: "Example:\n```python\nprint('ok')\n```\nDone.",
     )
 
     result = _send_message(client, {"message": "Hi"})
@@ -1346,9 +1449,9 @@ def test_send_message_renders_mixed_text_and_code_without_paragraph_wrapping(cli
 
 def test_send_message_handles_runtime_error_without_except_typeerror(client, monkeypatch):
     def raise_runtime_error(_request):
-        raise RuntimeError("boom")
+        return RuntimeError("boom")
 
-    monkeypatch.setattr(client.app.state.chat_harness, "run", raise_runtime_error)
+    _patch_harness_failure(monkeypatch, client.app.state.chat_harness, raise_runtime_error)
     result = _send_message(client, {"message": "Hi"})
 
     assert result.status_code == 500

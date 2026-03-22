@@ -1,7 +1,11 @@
+import pytest
+
 from agents.chat_harness import (
+    ChatHarnessEvent,
+    ChatHarnessExecutionError,
+    ChatHarnessFailure,
     ChatHarnessIdentity,
     ChatHarnessRequest,
-    ChatHarnessResult,
     ConversationTurn,
 )
 from agents.harness_registry import HarnessRegistry, HarnessResolutionError
@@ -22,8 +26,16 @@ class FakeHarness:
     def identity(self):
         return self._identity
 
-    def run(self, request: ChatHarnessRequest) -> ChatHarnessResult:
-        return ChatHarnessResult(output_text=f"{self.identity.key}:{request.message}")
+    def run_events(self, request: ChatHarnessRequest):
+        yield ChatHarnessEvent(
+            event_type="output_text",
+            output_text=f"{self.identity.key}:{request.message}",
+            sequence=0,
+        )
+        yield ChatHarnessEvent(
+            event_type="completed",
+            sequence=1,
+        )
 
 
 def test_failure_presentation_uses_normalized_failure_codes():
@@ -162,6 +174,75 @@ def test_chat_turn_service_finalize_failure_keeps_user_turn_and_marks_request_fa
     assert failed_state.turn_request.failure_code == "rate_limited"
     assert failed_state.assistant_message is None
     assert failed_state.user_message.content == "Hello"
+
+
+def test_chat_turn_service_execute_harness_request_collects_multi_event_output(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    service = ChatTurnService(repository)
+
+    class MultiEventHarness(FakeHarness):
+        def run_events(self, request: ChatHarnessRequest):
+            yield ChatHarnessEvent(
+                event_type="output_text",
+                output_text="Hello",
+                sequence=0,
+            )
+            yield ChatHarnessEvent(
+                event_type="output_text",
+                output_text=" there",
+                sequence=1,
+            )
+            yield ChatHarnessEvent(
+                event_type="completed",
+                sequence=2,
+                metadata={"surface": "events"},
+            )
+
+    result = service.execute_harness_request(
+        harness=MultiEventHarness("fake"),
+        harness_request=ChatHarnessRequest(message="ignored"),
+    )
+
+    assert result.output_text == "Hello there"
+    assert result.metadata == {"surface": "events"}
+
+
+def test_chat_turn_service_execute_harness_request_raises_on_failed_event_after_partial_output(
+    tmp_path,
+):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    service = ChatTurnService(repository)
+
+    class FailingEventHarness(FakeHarness):
+        def run_events(self, request: ChatHarnessRequest):
+            yield ChatHarnessEvent(
+                event_type="output_text",
+                output_text="Hello",
+                sequence=0,
+            )
+            yield ChatHarnessEvent(
+                event_type="failed",
+                failure=ChatHarnessFailure(
+                    code="provider_error",
+                    message="provider failed",
+                    retryable=True,
+                    detail=request.message,
+                ),
+                sequence=1,
+            )
+
+    with pytest.raises(ChatHarnessExecutionError) as exc_info:
+        service.execute_harness_request(
+            harness=FailingEventHarness("fake"),
+            harness_request=ChatHarnessRequest(message="ignored"),
+        )
+
+    assert exc_info.value.failure.code == "provider_error"
+    assert exc_info.value.failure.detail == "ignored"
 
 
 def test_chat_turn_service_replays_duplicate_processing_request_state(tmp_path):

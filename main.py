@@ -1101,8 +1101,9 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             )
 
             harness_result = await asyncio.to_thread(
-                chat_harness.run,
-                harness_request,
+                chat_turn_service.execute_harness_request,
+                harness=chat_harness,
+                harness_request=harness_request,
             )
             response = cast(str, harness_result.output_text)
             turn_request_state = await asyncio.to_thread(

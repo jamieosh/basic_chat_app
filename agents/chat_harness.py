@@ -153,6 +153,45 @@ class ChatHarnessExecutionError(RuntimeError):
         super().__init__(failure.message)
 
 
+def collect_harness_events(events: Iterator[ChatHarnessEvent]) -> ChatHarnessResult:
+    output_parts: list[str] = []
+    terminal_result: ChatHarnessResult | None = None
+    seen_terminal_event = False
+    last_sequence = -1
+
+    for event in events:
+        if event.sequence <= last_sequence:
+            raise ValueError("Harness events must use strictly increasing sequence numbers.")
+        if seen_terminal_event:
+            raise ValueError("Harness events cannot continue after a terminal event.")
+
+        last_sequence = event.sequence
+        if event.event_type == "output_text":
+            output_parts.append(event.output_text or "")
+            continue
+
+        if event.event_type == "failed":
+            seen_terminal_event = True
+            failure = event.failure
+            if failure is None:  # pragma: no cover - enforced by ChatHarnessEvent invariants
+                raise ValueError("Failed events require a failure payload.")
+            raise ChatHarnessExecutionError(failure)
+
+        seen_terminal_event = True
+        terminal_output = event.output_text if event.output_text is not None else "".join(output_parts)
+        terminal_result = ChatHarnessResult(
+            output_text=terminal_output,
+            finish_reason=event.finish_reason or "completed",
+            observability=event.observability,
+            metadata=event.metadata,
+        )
+
+    if terminal_result is None:
+        raise ValueError("Harness event streams must end with a completed or failed event.")
+
+    return terminal_result
+
+
 class ChatHarness(ABC):
     """App-facing contract for harness implementations."""
 
@@ -171,40 +210,7 @@ class ChatHarness(ABC):
 
     def run(self, request: ChatHarnessRequest) -> ChatHarnessResult:
         """Collect normalized events into the final non-streaming result."""
-
-        output_parts: list[str] = []
-        terminal_result: ChatHarnessResult | None = None
-        seen_terminal_event = False
-        last_sequence = -1
-
-        for event in self.run_events(request):
-            if event.sequence <= last_sequence:
-                raise ValueError("Harness events must use strictly increasing sequence numbers.")
-            if seen_terminal_event:
-                raise ValueError("Harness events cannot continue after a terminal event.")
-
-            last_sequence = event.sequence
-            if event.event_type == "output_text":
-                output_parts.append(event.output_text or "")
-                continue
-
-            if event.event_type == "failed":
-                seen_terminal_event = True
-                raise ChatHarnessExecutionError(event.failure)
-
-            seen_terminal_event = True
-            terminal_output = event.output_text if event.output_text is not None else "".join(output_parts)
-            terminal_result = ChatHarnessResult(
-                output_text=terminal_output,
-                finish_reason=event.finish_reason or "completed",
-                observability=event.observability,
-                metadata=event.metadata,
-            )
-
-        if terminal_result is None:
-            raise ValueError("Harness event streams must end with a completed or failed event.")
-
-        return terminal_result
+        return collect_harness_events(self.run_events(request))
 
     @abstractmethod
     def run_events(self, request: ChatHarnessRequest) -> Iterator[ChatHarnessEvent]:
