@@ -21,6 +21,7 @@ class RuntimeSettings:
     cors_allow_credentials: bool
     cors_allowed_methods: list[str]
     cors_allowed_headers: list[str]
+    default_harness_key: str = "openai"
 
     def cors_middleware_kwargs(self) -> dict[str, object]:
         return {
@@ -47,6 +48,7 @@ def get_settings() -> RuntimeSettings:
         cors_allow_credentials=_get_bool_env("CORS_ALLOW_CREDENTIALS", default=False),
         cors_allowed_methods=_get_csv_env("CORS_ALLOWED_METHODS", default=["*"]),
         cors_allowed_headers=_get_csv_env("CORS_ALLOWED_HEADERS", default=["*"]),
+        default_harness_key=_get_optional_env("DEFAULT_CHAT_HARNESS_KEY") or "openai",
     )
     _validate_settings(settings)
     return settings
@@ -111,3 +113,6 @@ def _validate_settings(settings: RuntimeSettings) -> None:
 
     if settings.chat_database_path.exists() and settings.chat_database_path.is_dir():
         raise ValueError("CHAT_DATABASE_PATH must point to a SQLite database file, not a directory.")
+
+    if not settings.default_harness_key.strip():
+        raise ValueError("DEFAULT_CHAT_HARNESS_KEY must not be empty.")

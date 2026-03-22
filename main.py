@@ -20,7 +20,11 @@ from agents.base_agent import (
     ChatHarnessRequest,
     ConversationTurn,
 )
-from agents.openai_agent import OpenAIAgent
+from agents.harness_registry import (
+    HarnessRegistry,
+    HarnessResolutionError,
+    build_chat_harness_registry,
+)
 from persistence import (
     ChatMessage,
     ChatRepository,
@@ -74,11 +78,24 @@ class ChatPageState:
 
 
 def _get_chat_harness(request: Request) -> ChatHarness:
-    """Read the request-scoped harness initialized at startup."""
+    """Resolve the default request-scoped harness initialized at startup."""
     try:
-        return request.app.state.chat_harness
+        registry = request.app.state.chat_harness_registry
     except AttributeError as exc:
         logger.error("Chat harness is not initialized")
+        raise HTTPException(status_code=503, detail="Chat harness unavailable") from exc
+    try:
+        return registry.default()
+    except HarnessResolutionError as exc:
+        logger.error("Default chat harness could not be resolved detail=%s", str(exc))
+        raise HTTPException(status_code=503, detail="Chat harness unavailable") from exc
+
+
+def _get_chat_harness_registry(request: Request) -> HarnessRegistry:
+    try:
+        return request.app.state.chat_harness_registry
+    except AttributeError as exc:
+        logger.error("Chat harness registry is not initialized")
         raise HTTPException(status_code=503, detail="Chat harness unavailable") from exc
 
 
@@ -221,7 +238,7 @@ def _set_startup_state(app: FastAPI, *, startup_complete: bool) -> None:
 def _is_chat_service_available(app: FastAPI) -> bool:
     return (
         bool(getattr(app.state, "startup_complete", False))
-        and hasattr(app.state, "chat_harness")
+        and hasattr(app.state, "chat_harness_registry")
         and hasattr(app.state, "chat_repository")
         and hasattr(app.state, "chat_turn_service")
     )
@@ -236,7 +253,7 @@ def _chat_service_unavailable_detail(app: FastAPI) -> str:
 def _readiness_status(app: FastAPI) -> tuple[int, dict[str, object]]:
     return build_readiness_payload(
         startup_complete=bool(getattr(app.state, "startup_complete", False)),
-        harness_initialized=hasattr(app.state, "chat_harness"),
+        harness_initialized=hasattr(app.state, "chat_harness_registry"),
         storage_initialized=hasattr(app.state, "chat_repository"),
     )
 
@@ -633,13 +650,8 @@ async def lifespan(app: FastAPI):
         bootstrap_database(settings.chat_database_path)
         app.state.chat_repository = ChatRepository(settings.chat_database_path)
         app.state.chat_turn_service = ChatTurnService(app.state.chat_repository)
-        app.state.chat_harness = OpenAIAgent(
-            api_key=settings.openai_api_key or "",
-            model=settings.openai_model,
-            prompt_name=settings.openai_prompt_name,
-            temperature=settings.openai_temperature,
-            timeout=settings.openai_timeout_seconds,
-        )
+        app.state.chat_harness_registry = build_chat_harness_registry(settings)
+        app.state.chat_harness = app.state.chat_harness_registry.default()
     except StartupDiagnosticsError as exc:
         for failure in exc.failures:
             logger.critical("startup.failed check=%s detail=%s", failure.name, failure.detail)
@@ -683,6 +695,8 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         _set_startup_state(app, startup_complete=False)
+        if hasattr(app.state, "chat_harness_registry"):
+            del app.state.chat_harness_registry
         if hasattr(app.state, "chat_harness"):
             del app.state.chat_harness
         if hasattr(app.state, "chat_turn_service"):
