@@ -14,34 +14,6 @@ The rest of this backlog assumes `ChatHarness`, normalized harness types, and th
 
 ## Proposed Items
 
-### P3-05 Streaming-Capable Harness Execution Surface
-
-Priority: P1
-
-Problem:
-The current contract returns only a final string response. That makes later streaming support a redesign problem rather than an additive change.
-
-Deliver:
-
-- introduce an event-capable harness execution surface
-- make `run_events()` the canonical execution path for `ChatHarness`
-- keep `run()` only as a thin collector over `run_events()` for non-streaming callers
-- support collection of a final assistant response for the existing non-streaming web flow
-- define normalized event types that can later support streaming text, tool activity, and completion metadata
-- make run/event metadata inspectable enough for the small control/service layer to reason about execution coherently
-- keep the initial Phase 3 web UX simple even if the harness surface is stream-ready
-
-Acceptance criteria:
-
-- provider implementations do not maintain separate execution logic for `run()` and `run_events()`
-- a harness can expose streaming-capable events without redesigning the app-facing contract
-- the current HTMX send flow can still collect a final assistant message deterministically
-- tests cover both collected-final-response behavior and event-surface normalization
-- normalized events carry enough metadata to support later inspectability without exposing provider-specific payloads to routes
-
-What the user sees:
-Possibly no immediate UI change, but the app stops being architecturally blocked on future streaming support.
-
 ### P3-06 Tool Hook And Capability Foundation
 
 Priority: P2
@@ -146,7 +118,7 @@ No required UI change, but Phase 3 is now validated against a real alternative p
 ## Sequencing Notes
 
 - `P3-01`, `P3-02`, and `P3-03` are complete groundwork for the rest of Phase 3.
-- `P3-04` and `P3-05` make the harness actually useful for memory and streaming evolution.
+- `P3-04` makes the harness useful for memory evolution, and `P3-05` now provides the shipped event-capable execution surface for future streaming work.
 - `P3-06` should stay intentionally light unless a concrete tool use case appears.
 - `P3-07` and `P3-08` should tighten the app-layer cleanup and documentation before the final proof step.
 - `P3-09` should land late in Phase 3 as the real-world proof that the harness boundary is not only OpenAI in disguise.
