@@ -14,29 +14,6 @@ The rest of this backlog assumes `ChatHarness`, normalized harness types, and th
 
 ## Proposed Items
 
-### P3-04 Context Builders And Harness-Owned Memory Assembly
-
-Priority: P1
-
-Problem:
-Conversation history is currently handed to the provider in a straightforward way, but the app has no explicit place for harness-owned memory policy, context augmentation, or future summarization and retrieval experiments.
-
-Deliver:
-
-- introduce pluggable context-builder hooks owned by the harness layer
-- keep the persisted transcript as the canonical raw conversation record
-- provide a default context builder that reproduces current transcript-based behavior
-- make prompt-template use, prompt assembly, and context augmentation part of harness execution rather than route behavior
-
-Acceptance criteria:
-
-- the harness can assemble model-facing context without route changes
-- the default path preserves current multi-turn continuity semantics
-- future memory experiments can be added behind the harness boundary instead of in web handlers
-
-What the user sees:
-No required UI change, but the app gains a clean place for better memory behavior later.
-
 ### P3-05 Streaming-Capable Harness Execution Surface
 
 Priority: P1

@@ -2,6 +2,14 @@
 
 ## 2026-03-22
 
+### Ship Phase 3 Context Builders And Harness-Owned Memory Assembly
+
+- Added harness-owned context assembly types and pluggable builders in `agents/chat_harness.py` and `agents/context_builders.py`, so model-facing context can evolve behind the harness boundary while persisted chat messages remain the canonical raw transcript.
+- Refactored `agents/openai_agent.py`, `utils/prompt_manager.py`, `services/chat_turns.py`, `persistence/repository.py`, and `main.py` so the shipped OpenAI path now builds prompt and transcript context through a default builder and the route no longer shapes provider-facing history itself.
+- Expanded regression coverage in `tests/test_context_builders.py`, `tests/test_openai_agent.py`, `tests/test_chat_harness_contract.py`, `tests/test_chat_turn_service.py`, `tests/test_main_routes.py`, and `tests/test_prompt_manager.py` to lock default prompt parity and prove alternate memory policies can fit behind the same request contract.
+- Updated `README.md`, `AGENTS.md`, `plans/PHASE 3 BACKLOG.md`, and `plans/done/PHASE 3 DONE.md` to reflect the shipped context-builder seam and harness-owned memory assembly model.
+- Verification passed with `uv run ruff check .`, `uv run mypy .`, and `uv run python -m pytest` (`200 passed`).
+
 ### Ship Phase 3 OpenAI Harness Adapter Migration
 
 - Refactored `agents/openai_agent.py` so the shipped OpenAI runtime behaves as a true harness adapter behind `ChatHarness.run()`, while `agents/chat_harness.py` keeps `BaseAgent` and `process_message()` clearly in compatibility-shim territory.
