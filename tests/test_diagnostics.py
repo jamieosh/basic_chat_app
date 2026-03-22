@@ -74,6 +74,25 @@ def test_diagnostic_check_as_readiness_item_maps_status():
     }
 
 
+def test_diagnostic_check_as_readiness_item_includes_metadata():
+    check = DiagnosticCheck(
+        name="harness_initialized",
+        ok=True,
+        detail="Chat harness is initialized.",
+        metadata={"harness_key": "openai", "provider_name": "openai"},
+    )
+
+    assert check.as_readiness_item() == {
+        "name": "harness_initialized",
+        "status": "ok",
+        "detail": "Chat harness is initialized.",
+        "metadata": {
+            "harness_key": "openai",
+            "provider_name": "openai",
+        },
+    }
+
+
 def test_raise_for_failed_startup_checks_preserves_all_failures():
     checks = [
         DiagnosticCheck(name="OPENAI_API_KEY", ok=False, detail="Missing required environment variable."),
@@ -137,6 +156,46 @@ def test_build_readiness_payload_reports_failed_checks():
                 "name": "storage_initialized",
                 "status": "failed",
                 "detail": "Chat storage is not available to process requests.",
+            },
+        ],
+    }
+
+
+def test_build_readiness_payload_includes_harness_identity_metadata_when_ready():
+    status_code, payload = diagnostics.build_readiness_payload(
+        startup_complete=True,
+        harness_initialized=True,
+        storage_initialized=True,
+        harness_metadata={
+            "harness_key": "openai",
+            "provider_name": "openai",
+            "model": "gpt-5-mini",
+        },
+    )
+
+    assert status_code == 200
+    assert payload == {
+        "status": "ok",
+        "checks": [
+            {
+                "name": "startup_completed",
+                "status": "ok",
+                "detail": "Application startup completed.",
+            },
+            {
+                "name": "harness_initialized",
+                "status": "ok",
+                "detail": "Chat harness is initialized.",
+                "metadata": {
+                    "harness_key": "openai",
+                    "provider_name": "openai",
+                    "model": "gpt-5-mini",
+                },
+            },
+            {
+                "name": "storage_initialized",
+                "status": "ok",
+                "detail": "Chat storage is initialized.",
             },
         ],
     }

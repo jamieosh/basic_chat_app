@@ -89,6 +89,11 @@ def test_readiness_check_reports_ready_state(client):
                 "name": "harness_initialized",
                 "status": "ok",
                 "detail": "Chat harness is initialized.",
+                "metadata": {
+                    "harness_key": "openai",
+                    "provider_name": "openai",
+                    "model": "gpt-5-mini",
+                },
             },
             {
                 "name": "storage_initialized",
@@ -155,6 +160,11 @@ def test_readiness_check_reports_partial_startup_when_harness_exists_but_startup
                 "name": "harness_initialized",
                 "status": "ok",
                 "detail": "Chat harness is initialized.",
+                "metadata": {
+                    "harness_key": "openai",
+                    "provider_name": "openai",
+                    "model": "gpt-5-mini",
+                },
             },
             {
                 "name": "storage_initialized",

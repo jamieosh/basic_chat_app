@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from utils.settings import RuntimeSettings
@@ -11,13 +11,20 @@ class DiagnosticCheck:
     name: str
     ok: bool
     detail: str
+    metadata: dict[str, str] = field(default_factory=dict)
 
-    def as_readiness_item(self) -> dict[str, str]:
-        return {
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "metadata", dict(self.metadata))
+
+    def as_readiness_item(self) -> dict[str, object]:
+        item: dict[str, object] = {
             "name": self.name,
             "status": "ok" if self.ok else "failed",
             "detail": self.detail,
         }
+        if self.metadata:
+            item["metadata"] = dict(self.metadata)
+        return item
 
 
 class StartupDiagnosticsError(RuntimeError):
@@ -84,6 +91,7 @@ def build_readiness_checks(
     startup_complete: bool,
     harness_initialized: bool,
     storage_initialized: bool,
+    harness_metadata: dict[str, str] | None = None,
 ) -> list[DiagnosticCheck]:
     checks = [
         DiagnosticCheck(
@@ -103,6 +111,7 @@ def build_readiness_checks(
                 if harness_initialized
                 else "Chat harness is not available to process messages."
             ),
+            metadata=(harness_metadata or {}) if harness_initialized else {},
         ),
         DiagnosticCheck(
             name="storage_initialized",
@@ -122,11 +131,13 @@ def build_readiness_payload(
     startup_complete: bool,
     harness_initialized: bool,
     storage_initialized: bool,
+    harness_metadata: dict[str, str] | None = None,
 ) -> tuple[int, dict[str, object]]:
     checks = build_readiness_checks(
         startup_complete=startup_complete,
         harness_initialized=harness_initialized,
         storage_initialized=storage_initialized,
+        harness_metadata=harness_metadata,
     )
     failures = [check for check in checks if not check.ok]
     payload: dict[str, object] = {

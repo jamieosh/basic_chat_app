@@ -30,7 +30,7 @@ from persistence import (
     StorageInitializationError,
     bootstrap_database,
 )
-from services import ChatTurnService, failure_presentation
+from services import ChatTurnObservability, ChatTurnService, failure_presentation
 from utils.diagnostics import (
     DiagnosticCheck,
     StartupDiagnosticsError,
@@ -248,10 +248,19 @@ def _chat_service_unavailable_detail(app: FastAPI) -> str:
 
 
 def _readiness_status(app: FastAPI) -> tuple[int, dict[str, object]]:
+    harness_observability: ChatTurnObservability | None = None
+    if hasattr(app.state, "chat_harness"):
+        harness_observability = ChatTurnObservability.from_harness(
+            app.state.chat_harness,
+            model=app.state.chat_harness.model if hasattr(app.state.chat_harness, "model") else None,
+        )
     return build_readiness_payload(
         startup_complete=bool(getattr(app.state, "startup_complete", False)),
         harness_initialized=hasattr(app.state, "chat_harness_registry"),
         storage_initialized=hasattr(app.state, "chat_repository"),
+        harness_metadata=(
+            None if harness_observability is None else harness_observability.identity_metadata()
+        ),
     )
 
 
@@ -672,9 +681,16 @@ async def lifespan(app: FastAPI):
         ) from exc
 
     _set_startup_state(app, startup_complete=True)
+    startup_observability = ChatTurnObservability.from_harness(
+        app.state.chat_harness,
+        model=app.state.chat_harness.model if hasattr(app.state.chat_harness, "model") else None,
+    )
     logger.info(
-        "startup.ready model=%s harness=%s",
-        _chat_harness_model_display_name(app.state.chat_harness),
+        "startup.ready harness_key=%s harness_version=%s provider=%s model=%s harness=%s",
+        startup_observability.harness_key,
+        startup_observability.harness_version,
+        startup_observability.provider_name,
+        startup_observability.model or _chat_harness_model_display_name(app.state.chat_harness),
         _chat_harness_display_name(app.state.chat_harness),
     )
     try:
@@ -1116,9 +1132,14 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 if presentation is None:  # pragma: no cover - enforced by result invariants
                     raise RuntimeError("Failed execution result is missing its failure presentation.")
                 logger.warning(
-                    "%s detail=%s",
+                    "%s failure_code=%s harness_key=%s harness_version=%s provider=%s model=%s request_id=%s",
                     presentation.log_event,
                     execution_result.observability.failure_code or "unknown_failure",
+                    execution_result.observability.harness_key,
+                    execution_result.observability.harness_version,
+                    execution_result.observability.provider_name,
+                    execution_result.observability.model,
+                    execution_result.observability.request_id,
                 )
                 return _finalize_response_with_client_cookie(
                     html_response,
@@ -1128,13 +1149,17 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
             response = cast(str, execution_result.output_text)
             logger.info(
-                "chat.request_succeeded request_chars=%s response_chars=%s chat_session_id=%s client_id=%s request_id=%s status=%s",
+                "chat.request_succeeded request_chars=%s response_chars=%s chat_session_id=%s client_id=%s request_id=%s status=%s harness_key=%s harness_version=%s provider=%s model=%s",
                 len(message),
                 len(response),
                 active_chat_session_id,
                 client_id,
                 resolved_request_id,
                 turn_request_state.turn_request.status,
+                execution_result.observability.harness_key,
+                execution_result.observability.harness_version,
+                execution_result.observability.provider_name,
+                execution_result.observability.model,
             )
             return _finalize_response_with_client_cookie(
                 html_response,

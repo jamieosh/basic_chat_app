@@ -150,6 +150,7 @@ class OpenAIAgent(BaseAgent):
             request_id=request.request_id,
             tags={
                 "harness_key": self.identity.key,
+                "provider_name": self.identity.provider_name or "unknown",
                 "context_builder": context.metadata.get("builder", "unknown"),
                 "prompt_name": self.prompt_name,
             },

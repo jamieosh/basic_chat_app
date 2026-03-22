@@ -43,6 +43,38 @@ class ChatTurnObservability:
     def __post_init__(self) -> None:
         object.__setattr__(self, "tags", dict(self.tags))
 
+    @classmethod
+    def from_harness(
+        cls,
+        harness: ChatHarness,
+        *,
+        request_id: str | None = None,
+        failure_code: str | None = None,
+        model: str | None = None,
+        tags: dict[str, str] | None = None,
+    ) -> ChatTurnObservability:
+        return cls(
+            harness_key=harness.identity.key,
+            harness_version=harness.identity.version,
+            provider_name=harness.identity.provider_name,
+            model=model,
+            request_id=request_id,
+            failure_code=failure_code,
+            tags={} if tags is None else tags,
+        )
+
+    def identity_metadata(self) -> dict[str, str]:
+        metadata: dict[str, str] = {}
+        if self.harness_key is not None:
+            metadata["harness_key"] = self.harness_key
+        if self.harness_version is not None:
+            metadata["harness_version"] = self.harness_version
+        if self.provider_name is not None:
+            metadata["provider_name"] = self.provider_name
+        if self.model is not None:
+            metadata["model"] = self.model
+        return metadata
+
 
 @dataclass(frozen=True)
 class ChatTurnExecutionResult:
