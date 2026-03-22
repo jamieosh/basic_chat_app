@@ -134,7 +134,14 @@ Current stage:
 - Keep tool-call vocabulary, tool-result handling, and any future tool orchestration hooks behind the harness contract rather than adding tool-specific branching to routes.
 - Keep default harness selection and binding resolution behind `agents/harness_registry.py` and the small service/control layer rather than in routes.
 - Keep normalized harness execution/failure handling and observability shaping in `services/chat_turns.py` rather than rebuilding those concerns inside routes.
+- Follow one harness-extension path:
+  - add a new harness module under `agents/`
+  - keep prompt assembly, context shaping, and provider failure mapping inside that harness
+  - register it in `agents/harness_registry.py` with a stable key and optional version
+  - switch the default via settings or registry wiring rather than route branching
+  - add coverage in contract, registry, service, and route tests
 - Prefer native `run_events()` implementations for provider-backed harnesses, with `run()` left as the shared collector; keep `BaseAgent` and `process_message()` only as compatibility shims for older agent code.
+- Treat `agents/openai_agent.py` as the shipped default adapter, not as the mandatory template for all future harnesses.
 - If you update model behavior, keep prompt templates, settings defaults, harness registry defaults, and persisted binding expectations in sync.
 - If you ship a backlog item, keep `README.md`, `AGENTS.md`, `CHANGELOG.md`, and the matching `plans/` backlog/done files aligned.
 - Add tests for:

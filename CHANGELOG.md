@@ -2,6 +2,13 @@
 
 ## 2026-03-22
 
+### Ship Phase 3 Test, Docs, And Forking Guidance Alignment
+
+- Added explicit harness-boundary regression coverage in `tests/test_chat_harness_contract.py`, `tests/test_harness_registry.py`, `tests/test_chat_turn_service.py`, `tests/test_main_routes.py`, `tests/test_diagnostics.py`, and `tests/test_openai_agent.py` to lock registry resolution, fake-harness startup wiring, non-default readiness metadata, and OpenAI `run()`/`run_events()` parity while keeping alternate harnesses possible.
+- Introduced a fake event-harness fixture in `tests/conftest.py` so the app can be booted and exercised through a non-OpenAI default harness without route-level provider coupling.
+- Updated `README.md`, `AGENTS.md`, `plans/PHASE 3 BACKLOG.md`, and `plans/PHASE 3 DESIGN.md` so contributor-facing docs and Phase 3 planning docs now describe one registry-backed harness extension path and the same UI-layer, harness-layer, and small control/service-layer split.
+- Final verification passed with `uv run ruff check .`, `uv run mypy .`, and `uv run python -m pytest` (`238 passed`).
+
 ### Ship Phase 3 Control-Layer Refactor, Error Handling, And Harness Observability
 
 - Refactored `services/chat_turns.py` and `main.py` so the small control/service layer now owns normalized started-turn execution, harness-resolution fallback, failure finalization, and per-turn observability while the route stays focused on validation and HTMX rendering.

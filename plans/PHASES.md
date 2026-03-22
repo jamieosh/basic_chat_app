@@ -48,6 +48,7 @@ Phase 3 should:
 
 - complete the app-facing harness boundary
 - bind each chat or session to a stable runtime profile
+- keep a small control/service layer between routes and harness execution
 - move context assembly and execution concerns behind the harness layer
 - keep the contract ready for streaming, tools, and alternative runtimes
 - prove the seam with at least one meaningful non-default harness

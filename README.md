@@ -4,6 +4,12 @@ A lightweight FastAPI + HTMX project for quickly experimenting with LLM chat beh
 
 This repository is intentionally a workbench, not a full-featured production chat platform. It is designed to be usable out of the box while staying easy to fork and extend.
 
+## Screenshot
+
+Example desktop chat session:
+
+![Example desktop chat session](docs/images/chat-workbench-example.png)
+
 ## Vision And Roadmap
 
 - Vision charter: `plans/VISION.md`
@@ -22,6 +28,7 @@ Those documents define the long-term direction and maturity phases. This README 
 - Lightweight loading feedback while switching chats.
 - Inline failure handling for validation, service-unavailable, and transport-error states.
 - OpenAI-backed default harness adapter resolved through the normalized event-capable `ChatHarness` surface, with `run_events()` canonical and `run()` acting as the non-streaming collector (`gpt-5-mini` by default).
+- One registry-backed extension path for alternate harnesses, with the shipped OpenAI adapter acting as the default baseline rather than the only supported architecture.
 - Normalized tool-call and tool-result event vocabulary plus an optional harness-owned `execute_tool_call()` seam for future tool experiments, while the shipped app still persists only user and assistant transcript turns.
 - Startup-wired harness registry plus stable per-chat harness binding (`harness_key` with optional version metadata).
 - A small `services/chat_turns.py` control layer that owns normalized harness execution, failure finalization, replay coordination, and observability shaping before the route renders the HTMX response.
@@ -185,6 +192,7 @@ basic_chat_app/
 ├── agents/                 # Chat harness contracts and implementations
 │   ├── base_agent.py      # Legacy compatibility shim and harness re-exports
 │   ├── chat_harness.py    # Core ChatHarness contract and normalized types
+│   ├── context_builders.py # Harness-owned context assembly helpers
 │   ├── harness_registry.py # Startup-time harness registry and binding resolution
 │   └── openai_agent.py    # OpenAI-backed harness adapter behind the contract
 ├── persistence/           # SQLite bootstrap and chat repository code
@@ -256,14 +264,23 @@ Install git hooks:
 uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 ```
 
-### Adding New Features
+### Adding Or Replacing A Harness
 
-1. **New Harness Types**: Implement `ChatHarness` in `agents/chat_harness.py`, register the implementation in `agents/harness_registry.py`, and keep route handlers unaware of provider-specific selection logic. Provider-backed harnesses should prefer native `run_events()` implementations, with `run()` left as the shared collector; `BaseAgent` remains available only as a compatibility shim for legacy `process_message()` implementations.
-2. **Tool Experiments**: Keep tool capability flags, `tool_call`/`tool_result` events, and any harness-owned `execute_tool_call()` behavior behind the harness contract. The current app flow is intentionally in-memory-only for tool activity and should continue to persist only user and assistant transcript turns until a later phase changes that model.
-3. **Custom Prompts And Memory Assembly**: Add or adapt templates in `templates/prompts/<agent_type>/`, then assemble them behind a harness-owned context builder instead of teaching routes how to shape provider-facing history.
-3. **UI Components**: Add new components in `templates/components/`
+Use this path when you want to add a provider-backed harness or a fake harness for tests:
 
-The application layer should own routing, persistence, idempotent turn lifecycle, and HTML rendering. The small control/service layer should own chat-bound harness resolution and normalized failure presentation. The harness layer should own normalized request/result/failure contracts, observability metadata, prompt assembly, and provider-facing execution.
+1. Add a new implementation in `agents/` that exposes `ChatHarness`. Prefer a native `run_events()` implementation and leave `run()` as the shared collector; use `BaseAgent` only as a compatibility shim for older `process_message()` code.
+2. Keep provider SDK calls, prompt assembly, context shaping, and provider-specific failure mapping inside that harness module. If the harness needs prompts, add them under `templates/prompts/<harness_key>/` and assemble them through a harness-owned context builder.
+3. Register the harness in `agents/harness_registry.py` with a stable `identity.key` and optional `identity.version`. Use `DEFAULT_CHAT_HARNESS_KEY` to choose the default for new chats; existing chats keep their persisted binding.
+4. Leave `main.py` focused on HTTP validation and HTMX rendering. The application layer should keep owning routing, persistence, idempotent turn lifecycle, and HTML rendering. The small control/service layer in `services/chat_turns.py` should keep owning chat-bound harness resolution, normalized execution, and failure presentation.
+5. Add or update coverage in `tests/test_chat_harness_contract.py`, `tests/test_harness_registry.py`, `tests/test_chat_turn_service.py`, and `tests/test_main_routes.py` so alternate harnesses are proven without route-level or OpenAI-specific coupling.
+
+The shipped OpenAI adapter in `agents/openai_agent.py` is the default baseline for this repository, not the required shape for every future harness.
+
+### Other Extension Seams
+
+1. **Tool Experiments**: Keep tool capability flags, `tool_call`/`tool_result` events, and any harness-owned `execute_tool_call()` behavior behind the harness contract. The current app flow is intentionally in-memory-only for tool activity and should continue to persist only user and assistant transcript turns until a later phase changes that model.
+2. **Custom Prompts And Memory Assembly**: Add or adapt templates in `templates/prompts/<agent_type>/`, then assemble them behind a harness-owned context builder instead of teaching routes how to shape provider-facing history.
+3. **UI Components**: Add new components in `templates/components/`.
 
 ### Configuration
 
@@ -291,9 +308,9 @@ For the default no-auth baseline, keep `CORS_ALLOW_CREDENTIALS=false`. If you en
 
 ### Safe Customization Points
 
-- Prompts: edit `templates/prompts/openai/` to change the default system or user prompt behavior.
+- Prompts: edit `templates/prompts/openai/` to change the shipped OpenAI harness behavior, or add a new prompt directory for a new harness.
 - Model and runtime settings: use environment variables first, then `utils/settings.py` if you need to change the supported configuration surface.
-- Provider wiring: edit `agents/openai_agent.py` for the default OpenAI adapter's request construction and error normalization, or add a new implementation in `agents/` behind the `ChatHarness` contract without changing the route layer.
+- Harness wiring: edit `agents/openai_agent.py` only for the shipped OpenAI adapter, or add a new implementation in `agents/` plus a registry entry in `agents/harness_registry.py` without changing the route layer.
 - Chat UI behavior: edit `templates/components/chat.html`, `static/js/chat.js`, and `static/css/chat.css`.
 - Visual baselines: update `tests/e2e/snapshots/` only when a deliberate UI change is accepted.
 

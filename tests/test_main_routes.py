@@ -104,6 +104,33 @@ def test_readiness_check_reports_ready_state(client):
     }
 
 
+def test_readiness_check_reports_startup_wired_fake_harness_metadata(
+    monkeypatch,
+    app_with_fake_default_harness,
+):
+    app, harness, fake_build_chat_harness_registry = app_with_fake_default_harness(
+        key="fake-default",
+        version="v2",
+    )
+    monkeypatch.setattr(main, "build_chat_harness_registry", fake_build_chat_harness_registry)
+
+    with TestClient(app) as client:
+        response = client.get("/health/ready")
+
+    assert response.status_code == 200
+    assert response.json()["checks"][1] == {
+        "name": "harness_initialized",
+        "status": "ok",
+        "detail": "Chat harness is initialized.",
+        "metadata": {
+            "harness_key": "fake-default",
+            "harness_version": "v2",
+            "provider_name": "fake-provider",
+            "model": harness.model,
+        },
+    }
+
+
 def test_readiness_check_returns_503_when_harness_is_missing(client):
     del client.app.state.chat_harness_registry
     del client.app.state.chat_harness
@@ -304,6 +331,38 @@ def test_send_message_sets_anonymous_client_cookie_when_missing(client, monkeypa
     assert response.status_code == 200
     assert response.cookies.get(CLIENT_ID_COOKIE_NAME)
     assert "HttpOnly" in response.headers["set-cookie"]
+
+
+def test_send_message_uses_startup_wired_fake_default_harness_for_new_chat(
+    monkeypatch,
+    app_with_fake_default_harness,
+):
+    app, _harness, fake_build_chat_harness_registry = app_with_fake_default_harness(
+        key="fake-default",
+        version="v2",
+    )
+    monkeypatch.setattr(main, "build_chat_harness_registry", fake_build_chat_harness_registry)
+
+    with TestClient(app) as client:
+        response = _send_message(client, {"message": "Hi from fake"})
+
+        assert response.status_code == 200
+        assert "fake:Hi from fake" in response.text
+
+        created_chat_session_id = _extract_chat_session_id(response.text)
+        repository = client.app.state.chat_repository
+        client_id = client.cookies.get(CLIENT_ID_COOKIE_NAME)
+        chats = repository.list_visible_chats(client_id=client_id)
+        messages = repository.list_messages_for_chat(
+            chat_session_id=created_chat_session_id,
+            client_id=client_id,
+        )
+
+    assert len(chats) == 1
+    assert chats[0].id == created_chat_session_id
+    assert chats[0].harness_key == "fake-default"
+    assert chats[0].harness_version == "v2"
+    assert [message.content for message in messages] == ["Hi from fake", "fake:Hi from fake"]
 
 
 def test_send_message_creates_chat_and_persists_first_turn(client, monkeypatch):

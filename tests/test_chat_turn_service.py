@@ -17,11 +17,18 @@ from services import ChatTurnService, failure_presentation
 
 
 class FakeHarness:
-    def __init__(self, key: str, *, version: str | None = None):
+    def __init__(
+        self,
+        key: str,
+        *,
+        provider_name: str | None = None,
+        version: str | None = None,
+    ):
         self._identity = ChatHarnessIdentity(
             key=key,
             display_name=f"{key} display",
             model_display_name=f"{key} model",
+            provider_name=provider_name,
             version=version,
         )
 
@@ -330,6 +337,47 @@ def test_chat_turn_service_execute_started_turn_succeeds_with_normalized_observa
     assert execution_result.observability.harness_key == "fake-default"
     assert execution_result.observability.request_id == "request-execute-success"
     assert execution_result.observability.failure_code is None
+
+
+def test_chat_turn_service_execute_started_turn_preserves_non_openai_harness_identity(
+    tmp_path,
+):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    registry = HarnessRegistry(
+        {
+            "fake-default": FakeHarness(
+                "fake-default",
+                provider_name="fake-provider",
+                version="v2",
+            )
+        },
+        default_key="fake-default",
+    )
+    service = ChatTurnService(repository, registry)
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-fake-default",
+        chat_session_id=None,
+        message="Hello",
+    )
+    execution_result = service.execute_started_turn(
+        client_id="client-a",
+        request_id="request-fake-default",
+        start_result=start_result,
+        message="Hello",
+    )
+
+    assert start_result.chat_session is not None
+    assert start_result.chat_session.harness_key == "fake-default"
+    assert start_result.chat_session.harness_version == "v2"
+    assert execution_result.outcome == "succeeded"
+    assert execution_result.response_harness.identity.key == "fake-default"
+    assert execution_result.observability.harness_key == "fake-default"
+    assert execution_result.observability.harness_version == "v2"
+    assert execution_result.observability.provider_name == "fake-provider"
 
 
 def test_chat_turn_service_execute_started_turn_finalizes_normalized_harness_failure(tmp_path):

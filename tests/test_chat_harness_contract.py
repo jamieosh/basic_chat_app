@@ -21,6 +21,7 @@ from agents.base_agent import (
     ChatHarnessToolResult,
     ContextMessage,
     ConversationTurn,
+    collect_harness_events,
 )
 
 
@@ -373,6 +374,69 @@ def test_chat_harness_run_ignores_tool_events_until_terminal_completion():
 
     assert result.output_text == "Next with tools"
     assert result.finish_reason == "completed"
+
+
+def test_collect_harness_events_requires_terminal_event():
+    with pytest.raises(ValueError, match="must end with a completed or failed event"):
+        collect_harness_events(
+            iter(
+                [
+                    ChatHarnessEvent(
+                        event_type="output_text",
+                        output_text="partial",
+                        sequence=0,
+                    ),
+                ]
+            )
+        )
+
+
+def test_collect_harness_events_requires_strictly_increasing_sequences():
+    with pytest.raises(ValueError, match="strictly increasing sequence numbers"):
+        collect_harness_events(
+            iter(
+                [
+                    ChatHarnessEvent(
+                        event_type="output_text",
+                        output_text="first",
+                        sequence=0,
+                    ),
+                    ChatHarnessEvent(
+                        event_type="output_text",
+                        output_text="second",
+                        sequence=0,
+                    ),
+                    ChatHarnessEvent(
+                        event_type="completed",
+                        sequence=1,
+                    ),
+                ]
+            )
+        )
+
+
+def test_collect_harness_events_rejects_events_after_terminal_completion():
+    with pytest.raises(ValueError, match="cannot continue after a terminal event"):
+        collect_harness_events(
+            iter(
+                [
+                    ChatHarnessEvent(
+                        event_type="output_text",
+                        output_text="first",
+                        sequence=0,
+                    ),
+                    ChatHarnessEvent(
+                        event_type="completed",
+                        sequence=1,
+                    ),
+                    ChatHarnessEvent(
+                        event_type="output_text",
+                        output_text="late output",
+                        sequence=2,
+                    ),
+                ]
+            )
+        )
 
 
 def test_base_agent_run_events_exposes_output_and_completion_events():

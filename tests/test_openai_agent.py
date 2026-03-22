@@ -210,6 +210,30 @@ def test_run_collects_same_final_output_as_run_events():
     assert call_count["count"] == 2
 
 
+def test_run_matches_run_events_observability_and_metadata():
+    agent = OpenAIAgent(api_key="test-key")
+
+    def fake_create(**_kwargs):
+        return types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="Parity reply"))]
+        )
+
+    agent.client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=fake_create)
+        )
+    )
+    request = ChatHarnessRequest(message="Hello there", request_id="req-456")
+
+    events = list(agent.run_events(request))
+    result = agent.run(request)
+
+    assert result.output_text == events[0].output_text
+    assert result.finish_reason == events[1].finish_reason
+    assert result.observability == events[1].observability
+    assert result.metadata == events[1].metadata
+
+
 def test_run_uses_builder_generated_context_and_records_builder_metadata():
     agent = OpenAIAgent(api_key="test-key")
     captured = {}
@@ -484,6 +508,21 @@ def test_run_normalizes_provider_errors(error_factory, expected_code):
         agent.run(ChatHarnessRequest(message="Hello there"))
 
     assert exc_info.value.failure.code == expected_code
+
+
+def test_run_events_normalize_provider_failures_the_same_way_as_run():
+    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    agent = _build_agent_that_raises(openai.APIConnectionError(message="conn", request=request))
+    harness_request = ChatHarnessRequest(message="Hello there")
+
+    with pytest.raises(ChatHarnessExecutionError) as run_exc_info:
+        agent.run(harness_request)
+
+    with pytest.raises(ChatHarnessExecutionError) as events_exc_info:
+        list(agent.run_events(harness_request))
+
+    assert run_exc_info.value.failure == events_exc_info.value.failure
+    assert events_exc_info.value.failure.code == "connection_error"
 
 
 def test_process_message_reraises_file_not_found_when_system_prompt_lookup_fails():
