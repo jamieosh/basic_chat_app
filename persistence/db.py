@@ -4,12 +4,16 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
+DEFAULT_CHAT_HARNESS_KEY = "openai"
+
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS chat_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     client_id TEXT NOT NULL,
     title TEXT NOT NULL CHECK(title <> ''),
+    harness_key TEXT NOT NULL DEFAULT 'openai' CHECK(harness_key <> ''),
+    harness_version TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     archived_at TEXT,
@@ -84,5 +88,29 @@ def bootstrap_database(db_path: Path) -> None:
         with closing(connect_database(db_path)) as connection:
             with connection:
                 connection.executescript(SCHEMA_SQL)
+                _ensure_chat_session_binding_columns(connection)
     except sqlite3.Error as exc:
         raise StorageInitializationError(f"Could not bootstrap SQLite schema at {db_path}.") from exc
+
+
+def _ensure_chat_session_binding_columns(connection: sqlite3.Connection) -> None:
+    column_names = {
+        str(row["name"])
+        for row in connection.execute("PRAGMA table_info(chat_sessions)").fetchall()
+    }
+
+    if "harness_key" not in column_names:
+        connection.execute(
+            f"ALTER TABLE chat_sessions ADD COLUMN harness_key TEXT NOT NULL DEFAULT '{DEFAULT_CHAT_HARNESS_KEY}'"
+        )
+    if "harness_version" not in column_names:
+        connection.execute("ALTER TABLE chat_sessions ADD COLUMN harness_version TEXT")
+
+    connection.execute(
+        """
+        UPDATE chat_sessions
+        SET harness_key = ?
+        WHERE harness_key IS NULL OR TRIM(harness_key) = ''
+        """,
+        (DEFAULT_CHAT_HARNESS_KEY,),
+    )

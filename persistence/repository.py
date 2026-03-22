@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from persistence.db import connect_database
+from persistence.db import DEFAULT_CHAT_HARNESS_KEY, connect_database
 
 
 @dataclass(frozen=True)
@@ -15,6 +15,8 @@ class ChatSession:
     id: int
     client_id: str
     title: str
+    harness_key: str
+    harness_version: str | None
     created_at: str
     updated_at: str
     archived_at: str | None
@@ -69,7 +71,14 @@ class ChatRepository:
         with closing(connect_database(self._db_path)) as connection:
             return self._next_default_chat_title(connection, client_id=client_id)
 
-    def create_chat(self, *, client_id: str, title: str) -> ChatSession:
+    def create_chat(
+        self,
+        *,
+        client_id: str,
+        title: str,
+        harness_key: str = DEFAULT_CHAT_HARNESS_KEY,
+        harness_version: str | None = None,
+    ) -> ChatSession:
         timestamp = _utcnow()
         with closing(connect_database(self._db_path)) as connection:
             with connection:
@@ -78,13 +87,15 @@ class ChatRepository:
                     INSERT INTO chat_sessions (
                         client_id,
                         title,
+                        harness_key,
+                        harness_version,
                         created_at,
                         updated_at,
                         archived_at,
                         deleted_at
-                    ) VALUES (?, ?, ?, ?, NULL, NULL)
+                    ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)
                     """,
-                    (client_id, title, timestamp, timestamp),
+                    (client_id, title, harness_key, harness_version, timestamp, timestamp),
                 )
                 row = connection.execute(
                     "SELECT * FROM chat_sessions WHERE id = ?",
@@ -220,6 +231,8 @@ class ChatRepository:
         request_id: str,
         chat_session_id: int | None,
         message: str,
+        harness_key: str = DEFAULT_CHAT_HARNESS_KEY,
+        harness_version: str | None = None,
     ) -> StartTurnRequestResult:
         timestamp = _utcnow()
         with closing(connect_database(self._db_path)) as connection:
@@ -244,6 +257,8 @@ class ChatRepository:
                         connection,
                         client_id=client_id,
                         title=self._next_default_chat_title(connection, client_id=client_id),
+                        harness_key=harness_key,
+                        harness_version=harness_version,
                         timestamp=timestamp,
                     )
                     prior_messages: list[ChatMessage] = []
@@ -552,6 +567,8 @@ def _insert_chat_row(
     *,
     client_id: str,
     title: str,
+    harness_key: str,
+    harness_version: str | None,
     timestamp: str,
 ) -> sqlite3.Row:
     cursor = connection.execute(
@@ -559,13 +576,15 @@ def _insert_chat_row(
         INSERT INTO chat_sessions (
             client_id,
             title,
+            harness_key,
+            harness_version,
             created_at,
             updated_at,
             archived_at,
             deleted_at
-        ) VALUES (?, ?, ?, ?, NULL, NULL)
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)
         """,
-        (client_id, title, timestamp, timestamp),
+        (client_id, title, harness_key, harness_version, timestamp, timestamp),
     )
     row = connection.execute(
         "SELECT * FROM chat_sessions WHERE id = ?",
@@ -695,6 +714,10 @@ def _row_to_chat_session(row: sqlite3.Row) -> ChatSession:
         id=int(row["id"]),
         client_id=str(row["client_id"]),
         title=str(row["title"]),
+        harness_key=str(row["harness_key"]),
+        harness_version=(
+            None if row["harness_version"] is None else str(row["harness_version"])
+        ),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
         archived_at=None if row["archived_at"] is None else str(row["archived_at"]),
