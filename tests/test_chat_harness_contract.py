@@ -16,6 +16,9 @@ from agents.base_agent import (
     ChatHarnessObservability,
     ChatHarnessRequest,
     ChatHarnessResult,
+    ChatHarnessTool,
+    ChatHarnessToolCall,
+    ChatHarnessToolResult,
     ContextMessage,
     ConversationTurn,
 )
@@ -104,6 +107,58 @@ class FailingEventHarness(ChatHarness):
         )
 
 
+class ToolEventHarness(ChatHarness):
+    @property
+    def identity(self) -> ChatHarnessIdentity:
+        return ChatHarnessIdentity(
+            key="tool-event-harness",
+            display_name="Tool Event Harness",
+            model_display_name="Tool Event Model",
+        )
+
+    @property
+    def capabilities(self) -> ChatHarnessCapabilities:
+        return ChatHarnessCapabilities(
+            supports_tool_call_events=True,
+            supports_tool_result_events=True,
+            available_tools=(
+                ChatHarnessTool(
+                    name="lookup_weather",
+                    description="Fetch weather for a city.",
+                ),
+            ),
+        )
+
+    def run_events(self, request: ChatHarnessRequest):
+        yield ChatHarnessEvent(
+            event_type="tool_call",
+            tool_call=ChatHarnessToolCall(
+                call_id="call-1",
+                tool_name="lookup_weather",
+                arguments='{"city":"London"}',
+            ),
+            sequence=0,
+        )
+        yield ChatHarnessEvent(
+            event_type="tool_result",
+            tool_result=ChatHarnessToolResult(
+                call_id="call-1",
+                tool_name="lookup_weather",
+                output='{"forecast":"Rain"}',
+            ),
+            sequence=1,
+        )
+        yield ChatHarnessEvent(
+            event_type="output_text",
+            output_text=f"{request.message} with tools",
+            sequence=2,
+        )
+        yield ChatHarnessEvent(
+            event_type="completed",
+            sequence=3,
+        )
+
+
 class FakeContextBuilder:
     def build(self, request: ChatHarnessRequest) -> ChatHarnessContext:
         return ChatHarnessContext(
@@ -116,6 +171,18 @@ class FakeContextBuilder:
 
 
 def test_chat_harness_models_are_json_serializable():
+    capabilities = ChatHarnessCapabilities(
+        supports_tool_call_events=True,
+        supports_tool_result_events=True,
+        supports_tool_orchestration=True,
+        available_tools=[
+            ChatHarnessTool(
+                name="lookup_weather",
+                description="Fetch weather for a city.",
+                metadata={"category": "weather"},
+            )
+        ],
+    )
     failure = ChatHarnessFailure(
         code="provider_error",
         message="provider failed",
@@ -155,6 +222,7 @@ def test_chat_harness_models_are_json_serializable():
                 version="v1",
             )
         ),
+        "capabilities": asdict(capabilities),
         "request": asdict(request),
         "context": asdict(
             ChatHarnessContext(
@@ -168,15 +236,19 @@ def test_chat_harness_models_are_json_serializable():
         "result": asdict(result),
         "event": asdict(
             ChatHarnessEvent(
-                event_type="completed",
-                output_text="Hello",
+                event_type="tool_call",
+                tool_call=ChatHarnessToolCall(
+                    call_id="tool-1",
+                    tool_name="lookup_weather",
+                    arguments='{"city":"London"}',
+                    metadata={"phase": "3"},
+                ),
                 observability=ChatHarnessObservability(
                     model="fake-model",
                     provider="fake-provider",
                     request_id="req-123",
                 ),
                 sequence=3,
-                finish_reason="stop",
                 metadata={"chat_id": "42"},
             )
         ),
@@ -186,11 +258,43 @@ def test_chat_harness_models_are_json_serializable():
     decoded = json.loads(encoded)
 
     assert decoded["identity"]["key"] == "fake"
+    assert decoded["capabilities"]["supports_tool_orchestration"] is True
+    assert decoded["capabilities"]["available_tools"][0]["name"] == "lookup_weather"
     assert decoded["request"]["conversation_history"][0]["role"] == "user"
     assert decoded["context"]["messages"][0]["role"] == "system"
     assert decoded["result"]["failure"]["code"] == "provider_error"
     assert decoded["result"]["observability"]["request_id"] == "req-123"
-    assert decoded["event"]["finish_reason"] == "stop"
+    assert decoded["event"]["tool_call"]["tool_name"] == "lookup_weather"
+
+
+def test_chat_harness_capabilities_supports_tools_when_tool_features_are_enabled():
+    capabilities = ChatHarnessCapabilities(
+        supports_tool_call_events=True,
+        available_tools=[ChatHarnessTool(name="lookup_weather")],
+    )
+
+    assert capabilities.supports_tools is True
+    assert capabilities.available_tools == (ChatHarnessTool(name="lookup_weather"),)
+
+
+def test_tool_events_require_matching_payloads():
+    with pytest.raises(ValueError, match="Tool-call events require tool_call."):
+        ChatHarnessEvent(event_type="tool_call", sequence=0)
+
+    with pytest.raises(ValueError, match="Tool-result events require tool_result."):
+        ChatHarnessEvent(event_type="tool_result", sequence=0)
+
+    with pytest.raises(ValueError, match="Tool-call events cannot include output_text or tool_result."):
+        ChatHarnessEvent(
+            event_type="tool_call",
+            output_text="hello",
+            tool_call=ChatHarnessToolCall(
+                call_id="call-1",
+                tool_name="lookup_weather",
+                arguments="{}",
+            ),
+            sequence=0,
+        )
 
 
 def test_chat_harness_request_exposes_transcript_alias_for_conversation_history():
@@ -260,6 +364,15 @@ def test_chat_harness_run_raises_normalized_failure_from_event_stream():
 
     assert exc_info.value.failure.code == "provider_error"
     assert exc_info.value.failure.detail == "request=req-456"
+
+
+def test_chat_harness_run_ignores_tool_events_until_terminal_completion():
+    harness = ToolEventHarness()
+
+    result = harness.run(ChatHarnessRequest(message="Next", request_id="req-456"))
+
+    assert result.output_text == "Next with tools"
+    assert result.finish_reason == "completed"
 
 
 def test_base_agent_run_events_exposes_output_and_completion_events():
