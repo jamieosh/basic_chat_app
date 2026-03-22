@@ -38,13 +38,13 @@ The main risk is accidentally changing prompt shape while refactoring the curren
 - [x] Add contract-level tests with a fake harness or fake builder showing alternate memory assembly can be introduced behind the harness seam without changing the HTMX send contract. -> covers AC: Regression tests prove that future memory or context experiments can be introduced behind the harness layer without changing the HTMX send contract.
 
 ## Definition of Done
-- [ ] All acceptance criteria checked off
-- [ ] All new or updated tests pass
-- [ ] `uv run ruff check .` passes
-- [ ] `uv run mypy .` passes
-- [ ] `uv run python -m pytest` passes
-- [ ] `README.md` updated if user-visible behavior changed
-- [ ] E2E or visual checks run when UI behavior changes materially
+- [x] All acceptance criteria checked off
+- [x] All new or updated tests pass
+- [x] `uv run ruff check .` passes
+- [x] `uv run mypy .` passes
+- [x] `uv run python -m pytest` passes
+- [x] `README.md` updated if user-visible behavior changed
+- [x] E2E or visual checks run when UI behavior changes materially
 - [ ] `CHANGELOG.md` updated when the feature ships
 - [ ] Matching phase backlog and `plans/done/PHASE X DONE.md` updated when the feature ships
 - [ ] `AGENTS.md` updated if architecture or contributor guidance changes
