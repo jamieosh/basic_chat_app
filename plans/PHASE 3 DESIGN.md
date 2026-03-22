@@ -56,11 +56,13 @@ For developers and fork maintainers, the intended outcome is:
 
 - the web chat layer talks to a single harness contract
 - provider-specific code lives in one dedicated harness/provider area
+- contributors can follow one registry-backed path to add a new harness without editing unrelated route code
 - adding a Claude or OpenRouter implementation should be localized
 - trying a framework-backed harness should not require reshaping the chat UI or route flow
 - future non-web interfaces should be able to reuse the same harness contract
 - the Phase 3 seam is validated by at least one real non-default harness rather than only a renamed OpenAI path
 - the route layer starts to look like a client of a small control/service layer rather than the owner of execution behavior
+- the shipped OpenAI adapter remains the default baseline, not the mandatory template for every future harness
 
 ## Resolved Scope Decisions
 
@@ -81,6 +83,14 @@ For developers and fork maintainers, the intended outcome is:
   - normalized chat execution contract, context assembly, prompt-template use, provider selection, capability exposure, observability hooks, and execution hooks
 - Provider or harness layer:
   - concrete OpenAI, Claude, OpenRouter, or framework-backed implementations
+
+The recommended contributor path is:
+
+- add a new harness module under `agents/`
+- keep prompt assembly, context shaping, and provider failure mapping inside that harness
+- register it in `agents/harness_registry.py` with a stable key and optional version
+- switch the default through settings or registry wiring rather than route branching
+- prove the change in contract, registry, service, and route tests
 
 Phase 3 does not need a rich session model yet, but it should stop assuming that a plain chat transcript is the full durable object of the system.
 
@@ -198,6 +208,8 @@ That means:
 Phase 3 should include one real alternative harness implementation in addition to the default OpenAI path.
 
 The purpose is not to ship a large provider matrix or a user-facing model selector. The purpose is to force the architecture to prove that the harness seam is real under a non-OpenAI message model, failure model, and capability profile.
+
+The shipped OpenAI adapter should be treated as the default baseline for this repository, not as the only acceptable implementation shape.
 
 This proof implementation should:
 
