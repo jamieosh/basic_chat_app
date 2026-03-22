@@ -38,7 +38,7 @@ Phase 2 established a local-first, personal-use conversation model while keeping
 
 --
 
-### 3. Harness Boundary And Runtime Decoupling (In Progress)
+### 3. Harness Boundary And Runtime Decoupling (Completed)
 
 This phase formalizes the separation between the workbench UI and the runtime behind it.
 
