@@ -1,8 +1,8 @@
 ## Suggested Phases
 
-The phase model now reflects a broader shift from "chat app with an agent backend" toward "lightweight workbench over a minimal harness and control layer."
+The phase model now reflects a broader shift from "chat app with an agent backend" toward "lightweight workbench over explicit session, run, runtime, and control-layer concepts."
 
-Completed phases are retained as historical milestones. Future phases are reframed around runtime separation, richer session concepts, and multi-agent personal use.
+Completed phases are retained as historical milestones. Future phases are reframed around runtime separation, richer session-and-run concepts, multi-agent personal use, and optional connection to external runtime systems.
 
 --
 
@@ -18,7 +18,7 @@ Phase 1 complete means:
 - the baseline UI works without a frontend build step
 - extension seams for prompts, provider wiring, and basic chat behavior are explicit
 
-Phase 1 intentionally did not include authentication, persisted multi-chat continuity, streaming responses, generalized runtime abstraction, or deployment hardening.
+Phase 1 intentionally did not include authentication, persisted multi-chat continuity, explicit session modeling, generalized runtime abstraction, or deployment hardening.
 
 --
 
@@ -36,21 +36,23 @@ Phase 2 complete means:
 
 Phase 2 established a local-first, personal-use conversation model while keeping the UI server-rendered and HTMX-first.
 
+In later terminology, this phase mostly strengthened transcript continuity and chat lifecycle, but it did not yet make `session` and `run` first-class product concepts.
+
 --
 
 ### 3. Harness Boundary And Runtime Decoupling (Completed)
 
 This phase formalizes the separation between the workbench UI and the runtime behind it.
 
-The goal is to make the web app a client of a clear harness/runtime contract rather than the place where provider-specific behavior lives.
+The goal is to make the web app a client of a clear runtime-facing contract rather than the place where provider-specific behavior lives.
 
 Phase 3 should:
 
 - complete the app-facing harness boundary
-- bind each chat or session to a stable runtime profile
+- bind each session to a stable runtime profile
 - keep a small control/service layer between routes and harness execution
 - move context assembly and execution concerns behind the harness layer
-- keep the contract ready for streaming, tools, and alternative runtimes
+- keep the contract ready for streaming, tools, and alternative runtime shapes
 - prove the seam with at least one meaningful non-default harness
 
 Progress already made:
@@ -59,21 +61,34 @@ Progress already made:
 
 Phase 3 is complete when the runtime boundary is real in practice, not just in naming.
 
+Phase 3 established the idea that:
+
+- the UI is not the runtime
+- the harness is an execution boundary rather than the whole product model
+- a session can carry stable runtime binding even when the visible surface still looks like a simple chat thread
+
 --
 
 ### 4. Workbench Session Model And Advanced Interaction
 
 This phase shifts the product from "multi-chat UI" toward a richer session-based workbench.
 
-The goal is to make sessions more expressive than a plain transcript and to expose the beginnings of workbench-style interaction.
+The goal is to make `session`, `run`, and `transcript` distinct and usable concepts in both the product and the architecture.
 
 This phase should introduce or mature concepts such as:
 
 - session identity beyond raw transcript history
+- run identity beyond "the latest send"
+- inspectable agent and runtime binding metadata
 - compare, fork, replay, or resume workflows
-- runtime- and session-level metadata that users can inspect
+- deliberate runtime comparison workflows without requiring arbitrary in-place model switching
 - artifacts, outputs, and other session-adjacent records where useful
-- file and project context where it supports the workbench model cleanly
+- lightweight scope, profile, or context-policy metadata where it supports the workbench model cleanly
+- terminology and persistence that stop treating a chat transcript as the whole durable object
+
+This is also the phase where the project should stay open to more than one runtime shape.
+
+That does not mean full external-runtime integration must land in Phase 4. It does mean the session and run model should not assume that every execution always comes from a native runtime implemented inside this repository.
 
 The emphasis is still product clarity, not feature sprawl.
 
@@ -88,12 +103,21 @@ The point is not enterprise orchestration. The point is to support the reality t
 This phase should focus on:
 
 - multiple concurrent scoped agents
-- explicit session and runtime bindings
+- explicit session, run, agent, and runtime bindings
 - approvals, interrupts, and resumability
 - background or long-running runs where appropriate
 - better visibility into what each agent is doing and why
+- destination-style surfaces beyond plain chat where useful, such as review queues, approvals, task outcomes, or scheduled outputs
+- agent definitions as clearer first-class concepts, including behavior packages built from prompts, skills, tools, delegation rules, and context policy
 
 This is the phase where the project should start to feel like a true workbench rather than only a chat UI.
+
+This phase is also the natural place to mature the difference between:
+
+- conversational continuation
+- task-style invocation
+- scheduled or background work
+- explicit compare or branch workflows
 
 --
 
@@ -107,6 +131,8 @@ Potential outcomes include:
 - scoped team-level agents for specific projects or responsibilities
 - shared artifacts, traces, and review workflows
 - limited collaboration patterns around agent output and supervision
+- named-user identity rather than browser-only identity
+- shared or team-scoped context layers such as brand voice, engineering standards, or common capability bundles where useful
 
 This phase is intentionally not "Slack for agents" as a product mandate. It is about making the small-team version of the workbench coherent and useful.
 
@@ -119,10 +145,13 @@ This phase provides a route for teams that want to run the project outside a pur
 It may include:
 
 - authentication and access controls
+- admin controls over users, agents, capabilities, and runtime access
+- user- and team-level capability provisioning
 - more explicit policy and approval surfaces
 - safer deployment defaults
 - operational guidance for small hosted deployments
 - selected protocol or integration hardening where needed
+- stronger hardening around external or federated runtime connections where those are supported
 
 These concerns are important, but they remain optional maturity work rather than the baseline identity of the project.
 
@@ -139,5 +168,6 @@ That means:
 - predictable defaults
 - strong tests around core lifecycle behavior
 - contributor guidance that stays aligned with the architecture
+- preserving a coherent user experience even when runtimes differ underneath
 
 This is an ongoing engineering standard across every phase, not a separate product phase.

@@ -26,10 +26,12 @@ That means:
 
 - the web UI is for humans to interact with, compare, inspect, and steer agents
 - chat is the first interaction surface, not the only one
-- the runtime behind the UI should be replaceable and inspectable
+- the runtime behind the UI should be replaceable, inspectable, and not assumed to be native
 - the project should support more than one active scoped agent without assuming a large hosted platform
 
 The main use case is not "one immortal agent that lives everywhere." It is closer to "one person or small team running several scoped agent sessions across projects and tasks."
+
+See [`plans/TERMINOLOGY.md`](/Users/jamie/Development/basic_chat_app/plans/TERMINOLOGY.md) for the working glossary and user-experience mapping.
 
 ## The Main Architectural Stance
 
@@ -37,10 +39,11 @@ The main use case is not "one immortal agent that lives everywhere." It is close
 
 The system should not be modeled around a single linear transcript.
 
-A transcript is one important record, but the more durable object is an agent session. Over time that session may include:
+A transcript is one important record, but the more durable object is a session. Over time that session may include:
 
 - transcript history
-- runtime or harness identity
+- agent identity
+- runtime identity
 - scope and permissions
 - memory policy
 - tools or skills available
@@ -49,6 +52,13 @@ A transcript is one important record, but the more durable object is an agent se
 
 This is the most important conceptual shift in the project.
 
+Related vocabulary should be kept explicit:
+
+- `session` is the durable work container
+- `run` is one execution inside a session
+- `transcript` is the visible conversation history
+- `chat` is the primary surface, not the durable model
+
 ### 2. UI And Runtime Must Be Separate Concerns
 
 The web server should not own model-specific behavior or become the de facto harness.
@@ -56,10 +66,12 @@ The web server should not own model-specific behavior or become the de facto har
 Instead:
 
 - the UI presents and controls sessions
-- the runtime or harness executes agent behavior
+- the runtime executes agent behavior
 - a small control layer coordinates the lifecycle between them
 
 This separation keeps the frontend simple while making the backend more adaptable.
+
+Some runtimes may be native to this repository. Others may be external or federated systems. The workbench should be able to present a coherent session-and-run experience across those runtime shapes.
 
 ### 3. A Minimal Control Plane Is Worth Building
 
@@ -68,6 +80,7 @@ For this project, "control plane" does not mean a large enterprise system.
 It means the smallest layer that can responsibly own:
 
 - session identity and lifecycle
+- agent selection or binding at the session level
 - agent scope and runtime binding
 - runs and event history
 - approvals, interrupts, and resumability
@@ -120,13 +133,15 @@ The harness layer should stay small and explicit.
 
 Its purpose is to define the common runtime contract for:
 
-- invoking a session
-- assembling context
-- exposing capabilities
+- invoking a run for a session
+- assembling or shaping context
+- exposing capabilities where applicable
 - emitting normalized events
 - representing failures and observability coherently
 
 It should not become a giant framework by accident.
+
+It also should not be confused with the full meaning of an agent. An agent is the behavior package; a harness is one execution boundary through which the workbench can talk to a runtime.
 
 ### A Richer Session Model
 
@@ -134,6 +149,7 @@ The project should move away from treating "chat thread" as the only durable uni
 
 A session should be able to carry richer concepts over time, including:
 
+- which agent definition it is using
 - which runtime or harness it is bound to
 - what scope it has
 - what memory policy applies
@@ -141,6 +157,8 @@ A session should be able to carry richer concepts over time, including:
 - what approvals or interrupts occurred
 
 This does not require implementation complexity everywhere at once. It simply means the conceptual model must leave room for it.
+
+Runs should also be treated as first-class records, because retries, task-style invocations, replay, compare, and resumability all make more sense as run behaviors than as transcript tricks.
 
 ### Memory As Several Different Things
 
@@ -176,6 +194,8 @@ Projects like [OpenClaw](https://docs.openclaw.ai/index) are useful inspiration 
 We are adopting the lesson about separation.
 
 We are not adopting the product goal of becoming a broad multi-channel agent gateway now.
+
+We may still choose to let the workbench connect to external runtime systems in the future, where this UI acts as one surface over a federated runtime. That is different from turning this repository itself into a general-purpose omnichannel gateway.
 
 ### Not A Giant Batteries-Included Super Harness
 
@@ -224,7 +244,7 @@ Its job is to let people:
 
 It should remain lightweight and readable.
 
-### Harness Or Runtime Layer
+### Runtime Layer
 
 The runtime layer is responsible for agent execution behavior.
 
@@ -238,6 +258,26 @@ Its job is to own:
 
 It is not the UI and it should not be tied to any single transport.
 
+The runtime layer may be:
+
+- native to this repository
+- provider-backed through a harness adapter
+- external or federated, with this workbench acting as one interface onto it
+
+### Harness Layer
+
+The harness layer is the adapter boundary the workbench uses to talk to a runtime coherently.
+
+Its job is to normalize:
+
+- request and response shapes
+- events
+- failures
+- observability
+- capability exposure where needed
+
+The harness layer should remain smaller than the full runtime system and much smaller than the product surface.
+
 ### Control Layer
 
 The control layer sits between surfaces and runtimes.
@@ -246,7 +286,7 @@ Its job is to own:
 
 - sessions
 - runs
-- bindings between sessions and runtimes
+- bindings between sessions, agents, and runtimes
 - execution status
 - approvals and resumability
 - future background execution
@@ -263,6 +303,7 @@ The following projects matter because they illuminate specific decisions:
 - [Hermes Agent](https://github.com/NousResearch/hermes-agent)
   - Strong signal toward a minimal core with explicit memory, skills, and MCP support.
   - Useful reminder that portability and migration between runtimes matter.
+  - Useful signal that some systems we may connect to are full runtime systems, not just model adapters.
 - [pi-ai / pi-agent-core / pi-coding-agent](https://mariozechner.at/posts/2025-11-30-pi-coding-agent/)
   - Strong argument for a small, inspectable runtime core plus separate UI/product layers.
   - Helpful counterweight against feature bloat.
@@ -288,8 +329,9 @@ The direction above leads to a few durable decisions:
 
 - We should continue treating the web UI as important, but not as the system boundary.
 - We should keep building a clean runtime-facing contract rather than embedding provider logic in routes.
-- We should evolve from chat-thread thinking toward session thinking.
+- We should evolve from chat-thread thinking toward session-and-run thinking.
 - We should make space for multiple scoped agents without turning the default setup into a platform.
+- We should leave room for external or federated runtimes without making them a baseline dependency.
 - We should preserve local-first simplicity while preparing for richer runtime behavior behind the scenes.
 
 ## Decision Filter
@@ -298,6 +340,7 @@ When evaluating future work, prefer changes that:
 
 - keep the default experience usable and calm
 - sharpen the runtime/UI/control separation
+- keep session, run, transcript, agent, harness, and runtime terminology distinct
 - improve inspectability and explicit control
 - support multi-session and multi-agent use without requiring a giant platform
 - make experiments with models, memory, tools, and protocols easier

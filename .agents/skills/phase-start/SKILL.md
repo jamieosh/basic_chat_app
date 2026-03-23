@@ -68,27 +68,57 @@ See [`plans/PARKING LOT.md`](...) for known ideas that are intentionally deferre
 ```
 
 8. Write `plans/PHASE X BACKLOG.md`.
-   - The backlog should be a sequential list of independently deliverable slices.
+   - The backlog should be an ordered list of independently deliverable items, highest priority first.
+   - Pull the phase number, exact phase title, and 1-2 sentence goal summary from `plans/PHASES.md`.
    - Each item should be scoped so it can be planned and shipped through the existing feature workflow.
    - Keep completed prior-phase work out of the new backlog unless explicitly carried over as unfinished dependency work.
+   - Use the repository's real feature-planning workflow language in the intro line. In this repo that currently means a `codex/<kebab-slug>` branch plus `plans/<kebab-slug>.md`, and the next-item workflow should point readers to `$feature-start`.
+   - Every item should include:
+     - phase item ID such as `P4-01`
+     - concise item title
+     - size: `Small`, `Medium`, or `Large`
+     - dependencies: `None` or specific prior item IDs
+     - a 2-3 sentence description covering what it delivers, why it matters to the portfolio strategy, and what is explicitly out of scope
+     - a `What the user will see` note, even if the answer is "no major visible change yet"
+   - End with a `Deferred` section for ideas considered for the phase but intentionally pushed out. After writing the file, move any true non-phase items into `plans/PARKING LOT.md`.
    - Recommended structure:
 
 ```markdown
-# Phase X Backlog
+# Phase <N> Backlog — <Phase Title>
 
-Short summary paragraph.
+> **Goal:** <phase goal from `plans/PHASES.md` in 1-2 sentences>
 
-Completed items should move to `plans/done/PHASE X DONE.md` once shipped.
+Items are ordered by priority. Each item gets a feature branch `codex/<kebab-slug>` and plan file `plans/<kebab-slug>.md` when work begins. Run `$feature-start` to pick the next item.
 
-## Proposed Items
+---
 
-- `PX-01 <title>`: outcome-focused description
-- `PX-02 <title>`: outcome-focused description
+## P<N>-01 — <Item Title>
 
-## Sequencing Notes
+**Size:** Small / Medium / Large
+**Dependencies:** None
 
-- Why the order matters
-- Known dependencies or late-phase proof items
+<2-3 sentence description: what it delivers, why it matters to the portfolio strategy, and what is explicitly out of scope for this item.>
+
+**What the user will see:** <1-2 sentence description of what the user will see with this change, if anything.>
+
+---
+
+## P<N>-02 — <Item Title>
+
+**Size:** Small / Medium / Large
+**Dependencies:** P<N>-01
+
+<Description.>
+
+**What the user will see:** <1-2 sentence description of what the user will see with this change, if anything.>
+
+---
+
+## Deferred
+
+Items considered for this phase but intentionally pushed out. Move true non-phase items to `plans/PARKING LOT.md` after writing this file.
+
+- **<Item>**: <why deferred and which future phase it belongs to>
 ```
 
 9. Keep the docs realistic:
