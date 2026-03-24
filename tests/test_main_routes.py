@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import itertools
 from pathlib import Path
 import re
+import sqlite3
 import types
 
 import main
@@ -414,6 +415,41 @@ def test_send_message_creates_chat_and_persists_first_turn(client, monkeypatch):
         "user",
         "assistant",
     ]
+
+
+def test_send_message_routes_preserve_existing_htmx_chat_session_behavior_after_phase4_schema(
+    client, monkeypatch
+):
+    _patch_harness_reply(monkeypatch, client.app.state.chat_harness, lambda _request: "Hello from test")
+
+    response = _send_message(
+        client,
+        {"message": "Hi", "request_id": "phase4-schema-request"},
+    )
+
+    assert response.status_code == 200
+    created_chat_session_id = _extract_chat_session_id(response.text)
+    assert response.headers["HX-Push-Url"].endswith(f"/chats/{created_chat_session_id}")
+    assert 'id="chat-session-id"' in response.text
+
+    repository = client.app.state.chat_repository
+    with sqlite3.connect(repository._db_path) as connection:  # noqa: SLF001
+        row = connection.execute(
+            """
+            SELECT tr.run_id, sr.run_kind, sr.status, tr.chat_session_id, sr.chat_session_id
+            FROM chat_turn_requests AS tr
+            INNER JOIN chat_session_runs AS sr ON sr.id = tr.run_id
+            WHERE tr.client_id = ? AND tr.request_id = ?
+            """,
+            (client.cookies.get(CLIENT_ID_COOKIE_NAME), "phase4-schema-request"),
+        ).fetchone()
+
+    assert row is not None
+    assert row[0] is not None
+    assert row[1] == "chat_send"
+    assert row[2] == "completed"
+    assert row[3] == created_chat_session_id
+    assert row[4] == created_chat_session_id
 
 
 def test_send_message_replays_duplicate_first_submit_without_duplicate_turns(client, monkeypatch):
