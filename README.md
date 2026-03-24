@@ -10,12 +10,12 @@ Example desktop chat session:
 
 ![Example desktop chat session](docs/images/chat-workbench-example.png)
 
-## Vision And Roadmap
+## Vision And Planning
 
-- Vision charter: `plans/VISION.md`
-- Phase model: `plans/PHASES.md`
+- Vision: `plans/VISION.md`
+- Plans: `plans/PHASES.md`
 
-Those documents define the long-term direction and maturity phases. This README focuses on current usage and contributor workflow.
+This README focuses on project scope, current behavior, setup, and contributor workflow.
 
 ## Current Capability (Today)
 
@@ -39,51 +39,22 @@ Those documents define the long-term direction and maturity phases. This README 
 - Safe HTML rendering with fenced code block formatting.
 - Responsive frontend suitable for desktop and mobile.
 
-## Phase 2 Complete Means
+## Project Scope
 
-Phase 2 is complete when the default app behaves as a durable, browser-cookie-scoped local-first chat workbench:
+- Keep the default experience usable out of the box for local personal or small-team use.
+- Keep the web UI server-rendered and HTMX-first by default.
+- Keep boundaries explicit between UI concerns and runtime/harness concerns.
+- Keep runtime/provider behavior configurable through settings and harness adapters.
+- Keep experimentation straightforward for prompts, models, memory shaping, and tools.
+- Keep the repository easy to fork and adapt for focused use cases.
 
-- chats persist across reloads and restarts
-- a user can create, revisit, switch, and delete chats from the default UI
-- `/chats/{chat_id}` restores the selected transcript on full page load
-- follow-up turns continue the same persisted chat with deterministic duplicate-request handling
-- the default shell remains HTMX-first, server-rendered, and straightforward to extend
+## Vision Summary
 
-## Historical Phase 1 Baseline
-
-The repository has moved well past the original Phase 1 boundary. The notes below stay here as historical context for the startup/configuration baseline that still underpins the current app:
-
-- Startup path resolution is project-root-aware rather than dependent on the shell's current working directory.
-- Runtime behavior is configurable through environment variables instead of route-level or harness-level constants.
-- Default CORS behavior matches the current no-auth posture: wildcard origins are allowed, but credentials stay disabled unless you opt into explicit origins.
-- Prompt/template selection, OpenAI model choice, timeout, and compatible temperature settings can be changed without modifying application code.
-- The browser chat flow prevents duplicate sends, uses a minimal typing indicator during normal requests, and renders degraded-service states inline when the backend is unavailable or a request fails.
-
-## Historical Phase 1 Completion Criteria
-
-Phase 1 was considered complete once a contributor could clone the repository, set `OPENAI_API_KEY`, run the app, and successfully chat through the default web UI without changing code.
-
-At that Phase 1 boundary, the completed baseline was:
-
-- single-turn request/response chat only
-- deterministic validation and inline request-failure handling
-- portable startup and environment-driven runtime configuration
-- no frontend build step required for the default UI
-- clear extension seams for prompts, provider wiring, and chat UI behavior
-
-At that time, Phase 1 did not include:
-
-- authentication
-- multi-chat continuity or persisted history
-- streaming responses
-- generalized chat-runtime/provider abstraction
-- deployment hardening for public internet exposure
-
-## Near-Term Product Shape
-
-- Keep the core simple and predictable.
-- Maintain a Python-first, minimal-JavaScript approach.
-- Preserve obvious extension seams for model, memory, and tool experimentation.
+- This project is a lightweight Python-first workbench, not just a single chat endpoint.
+- Chat is the first surface, while runtime behavior stays replaceable behind explicit contracts.
+- Sessions, runs, tools, and memory behavior should remain inspectable and experiment-friendly.
+- The default path should stay simple and local-first, even as capabilities grow.
+- Product direction and planning details live in `plans/VISION.md` and `plans/PHASES.md`.
 
 ## Send Reliability Policy
 
@@ -95,23 +66,99 @@ At that time, Phase 1 did not include:
 
 ## Setup
 
-1. Clone the repository:
+### Scripted Install (Recommended)
+
+The repository now includes helper scripts:
+
+- `scripts/install.sh`: clone/pull, dependency sync, and interactive `.env` setup
+- `scripts/update.sh`: fast-forward pull plus dependency sync (no `.env` prompts unless requested)
+- `scripts/run.sh`: foreground run and background process management (`start/stop/status/logs`)
+- `scripts/install_wrappers.sh`: installs namespaced global commands (`bca-install`, `bca-update`, `bca-run`)
+
+The install script runs on macOS and Linux (including Raspberry Pi OS), checks for required tooling, ensures `Python 3.11+`, installs `uv` if needed, and then prompts for `*_API_KEY` variables discovered in `.env.example`.
+It also installs `bca-*` wrapper commands into `~/.local/bin` by default.
+
+#### New machine setup
+
+```bash
+# Requires SSH access to GitHub
+git clone git@github.com:jamieosh/basic_chat_app.git ~/.local/share/basic_chat_app && \
+~/.local/share/basic_chat_app/scripts/install.sh
+```
+
+After opening a new terminal, `bca-install`, `bca-update`, and `bca-run` work from anywhere (if `~/.local/bin` is on your `PATH`).
+Works on macOS and Linux (including Raspberry Pi).
+
+To update an existing install from GitHub:
+```bash
+bca-update
+```
+
+#### Detailed scripted setup
+
+1. Clone the repository (or pull latest if you already have it):
 ```bash
 git clone <repository-url>
 cd basic_chat_app
 ```
 
-2. Use Python 3.11+ and sync dependencies with `uv`:
+2. Run the guided installer:
+```bash
+./scripts/install.sh
+```
+
+3. Ensure `~/.local/bin` is on `PATH` (one-time):
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+4. Run in the foreground (dev):
+```bash
+bca-run foreground --reload
+```
+
+5. Update later with:
+```bash
+bca-update
+```
+
+6. Re-run API key prompts during an update when needed:
+```bash
+bca-update --refresh-env
+```
+
+7. Re-run full installer logic later if needed:
+```bash
+bca-install
+```
+
+The application will be available at `http://localhost:8000`.
+
+Install location note:
+
+- By default, the scripts operate on the current repository when run from it.
+- If you run them from elsewhere, set `BASIC_CHAT_APP_HOME` (or pass `--install-dir`) to point at a managed checkout, for example:
+```bash
+export BASIC_CHAT_APP_HOME="$HOME/.local/share/basic_chat_app"
+```
+- If your shell does not include `~/.local/bin` on `PATH`, call wrappers by full path:
+```bash
+"$HOME/.local/bin/bca-update"
+```
+
+### Manual Setup (No Helper Script)
+
+1. Use Python 3.11+ and sync dependencies with `uv`:
 ```bash
 uv sync
 ```
 
-3. Create your local environment file from the checked-in example:
+2. Create your local environment file from the checked-in example:
 ```bash
 cp .env.example .env
 ```
 
-4. Configure the harness for new chats in `.env`. OpenAI remains the default:
+3. Configure the harness for new chats in `.env`. OpenAI remains the default:
 ```dotenv
 DEFAULT_CHAT_HARNESS_KEY=openai
 OPENAI_API_KEY=your_api_key_here
@@ -123,30 +170,57 @@ DEFAULT_CHAT_HARNESS_KEY=anthropic
 ANTHROPIC_API_KEY=your_api_key_here
 ```
 
-5. Optional: override the local SQLite path if you do not want the default `data/chat.db`:
+4. Optional: override the local SQLite path if you do not want the default `data/chat.db`:
 ```dotenv
 CHAT_DATABASE_PATH=data/chat.db
 ```
 
-6. Optional: customize the selected provider defaults:
+5. Optional: customize the selected provider defaults:
 ```dotenv
 OPENAI_MODEL=gpt-5-mini
 ANTHROPIC_MODEL=claude-sonnet-4-20250514
 ```
 
-7. Run the application:
+6. Run the application:
 ```bash
 uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The application will be available at `http://localhost:8000`.
-
 The app loads `.env` from the project root, so startup does not depend on your current working directory once the project is importable.
 The default database directory is created automatically on startup when needed.
 
+## Running And Background Operation
+
+Foreground run (recommended while developing):
+```bash
+bca-run foreground --reload
+```
+
+Background run (works on macOS and Linux/Raspberry Pi):
+```bash
+bca-run start
+bca-run status
+bca-run logs
+bca-run stop
+```
+
+Notes:
+
+- Background logs are written to `${BASIC_CHAT_APP_HOME:-<repo>}/.runtime/chat-app.log`.
+- PID tracking is written to `${BASIC_CHAT_APP_HOME:-<repo>}/.runtime/chat-app.pid`.
+- `scripts/run.sh start` does not survive reboot by itself. For reboot-persistent runtime, wrap it with your OS service manager (`systemd` on Linux/Raspberry Pi, `launchd` on macOS).
+
+To refresh global wrappers manually:
+```bash
+./scripts/install_wrappers.sh
+```
+
 ## Dependencies
 
+- git
+- curl (only needed if `uv` is not already installed)
 - Python 3.11+
+- uv
 - FastAPI
 - HTMX
 - Anthropic Python Client
@@ -156,7 +230,7 @@ The default database directory is created automatically on startup when needed.
 
 ## External Frontend Runtime Assumptions
 
-The default UI intentionally depends on two browser-loaded public CDN assets so the project can stay runnable without a frontend build step in Phase 1.
+The default UI intentionally depends on two browser-loaded public CDN assets so the project can stay runnable without a frontend build step.
 
 - Required external hosts:
   - `unpkg.com` for HTMX
@@ -181,7 +255,7 @@ The default UI intentionally depends on two browser-loaded public CDN assets so 
 Maintainer note:
 
 - HTMX version changes should remain exact and explicitly reviewed.
-- Tailwind CDN usage is a temporary Phase 1 convenience for the no-build-step baseline, not a long-term commitment to public-CDN runtime delivery.
+- Tailwind CDN usage is a temporary convenience for the no-build-step baseline, not a long-term commitment to public-CDN runtime delivery.
 
 ## Current Security Posture
 
@@ -190,7 +264,7 @@ The default template is for local development and experimentation, not for expos
 - no authentication is included
 - no authentication, rate limiting, or CSRF protection is included
 - wildcard CORS is part of the current no-auth baseline, with credentials disabled by default
-- deployment hardening is intentionally deferred beyond Phase 1
+- deployment hardening is intentionally deferred beyond the default local baseline
 
 Forks that move beyond trusted local or internal use should plan explicit security and operational hardening.
 
@@ -210,6 +284,11 @@ basic_chat_app/
 ├── static/                # Static assets
 │   ├── css/              # CSS styles
 │   └── js/               # JavaScript files
+├── scripts/               # Setup/update helpers
+│   ├── install.sh         # Clone/pull, sync deps, and guided .env setup
+│   ├── update.sh          # Fast-forward pull + dependency refresh
+│   ├── run.sh             # Foreground run + background start/stop/status/logs
+│   └── install_wrappers.sh # Installs bca-* global wrapper commands
 ├── templates/            # HTML templates
 │   ├── components/       # Reusable components
 │   └── prompts/         # AI prompt templates
@@ -285,11 +364,11 @@ Use this path when you want to add a provider-backed harness or a fake harness f
 4. Leave `main.py` focused on HTTP validation and HTMX rendering. The application layer should keep owning routing, persistence, idempotent turn lifecycle, and HTML rendering. The small control/service layer in `services/chat_turns.py` should keep owning chat-bound harness resolution, normalized execution, and failure presentation.
 5. Add or update coverage in `tests/test_chat_harness_contract.py`, `tests/test_harness_registry.py`, `tests/test_chat_turn_service.py`, and `tests/test_main_routes.py` so alternate harnesses are proven without route-level or OpenAI-specific coupling.
 
-The shipped OpenAI adapter in `agents/openai_agent.py` remains the default baseline for this repository. The shipped Anthropic adapter in `agents/anthropic_agent.py` is the Phase 3 proof that the harness boundary supports a materially different provider shape without route-level branching.
+The shipped OpenAI adapter in `agents/openai_agent.py` remains the default baseline for this repository. The shipped Anthropic adapter in `agents/anthropic_agent.py` is proof that the harness boundary supports a materially different provider shape without route-level branching.
 
 ### Other Extension Seams
 
-1. **Tool Experiments**: Keep tool capability flags, `tool_call`/`tool_result` events, and any harness-owned `execute_tool_call()` behavior behind the harness contract. The current app flow is intentionally in-memory-only for tool activity and should continue to persist only user and assistant transcript turns until a later phase changes that model.
+1. **Tool Experiments**: Keep tool capability flags, `tool_call`/`tool_result` events, and any harness-owned `execute_tool_call()` behavior behind the harness contract. The current app flow is intentionally in-memory-only for tool activity and should continue to persist only user and assistant transcript turns until a future update changes that model.
 2. **Custom Prompts And Memory Assembly**: Add or adapt templates in `templates/prompts/<agent_type>/`, then assemble them behind a harness-owned context builder instead of teaching routes how to shape provider-facing history.
 3. **UI Components**: Add new components in `templates/components/`.
 
