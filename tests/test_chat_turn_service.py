@@ -365,6 +365,48 @@ def test_chat_turn_service_execute_started_turn_succeeds_with_normalized_observa
     assert execution_result.observability.failure_code is None
 
 
+def test_chat_turn_service_preserves_send_contract_with_run_groundwork(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    registry = HarnessRegistry({"fake-default": FakeHarness("fake-default")}, default_key="fake-default")
+    service = ChatTurnService(repository, registry)
+
+    start_result = service.start_turn(
+        client_id="client-a",
+        request_id="request-run-groundwork",
+        chat_session_id=None,
+        message="Hello",
+    )
+
+    assert start_result.turn_request_state is not None
+    assert start_result.turn_request_state.run is not None
+    assert start_result.turn_request_state.turn_request.chat_session_id == start_result.turn_request_state.run.chat_session_id
+    assert start_result.turn_request_state.turn_request.run_id == start_result.turn_request_state.run.id
+
+    execution_result = service.execute_started_turn(
+        client_id="client-a",
+        request_id="request-run-groundwork",
+        start_result=start_result,
+        message="Hello",
+    )
+
+    assert execution_result.outcome == "succeeded"
+    assert execution_result.turn_request_state.turn_request.status == "completed"
+    assert execution_result.turn_request_state.run is not None
+    assert execution_result.turn_request_state.run.status == "completed"
+    assert (
+        execution_result.turn_request_state.turn_request.chat_session_id
+        == start_result.turn_request_state.turn_request.chat_session_id
+    )
+    assert (
+        execution_result.turn_request_state.turn_request.run_id
+        == execution_result.turn_request_state.run.id
+    )
+    assert execution_result.observability.run_id == execution_result.turn_request_state.run.id
+    assert execution_result.observability.run_kind == "chat_send"
+
+
 def test_chat_turn_service_execute_started_turn_preserves_non_openai_harness_identity(
     tmp_path,
 ):

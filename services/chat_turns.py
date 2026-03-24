@@ -16,6 +16,7 @@ from persistence.db import DEFAULT_CHAT_HARNESS_KEY
 from persistence.repository import (
     ChatRepository,
     ChatSession,
+    ChatSessionRun,
     ChatTurnRequestState,
     StartTurnRequestResult,
     conversation_turns_from_messages,
@@ -37,6 +38,8 @@ class ChatTurnObservability:
     provider_name: str | None = None
     model: str | None = None
     request_id: str | None = None
+    run_id: int | None = None
+    run_kind: str | None = None
     failure_code: str | None = None
     tags: dict[str, str] = field(default_factory=dict)
 
@@ -73,6 +76,10 @@ class ChatTurnObservability:
             metadata["provider_name"] = self.provider_name
         if self.model is not None:
             metadata["model"] = self.model
+        if self.run_id is not None:
+            metadata["run_id"] = str(self.run_id)
+        if self.run_kind is not None:
+            metadata["run_kind"] = self.run_kind
         return metadata
 
 
@@ -319,7 +326,8 @@ class ChatTurnService:
                 turn_request_state=failed_state,
                 observability=self._build_turn_observability(
                     request_id=request_id,
-                    chat_session=turn_request_state.chat_session,
+                    chat_session=failed_state.chat_session,
+                    run=failed_state.run,
                     failure_code="harness_unavailable",
                 ),
                 failure_presentation=failure_presentation("harness_unavailable"),
@@ -351,7 +359,8 @@ class ChatTurnService:
                 turn_request_state=failed_state,
                 observability=self._build_turn_observability(
                     request_id=request_id,
-                    chat_session=turn_request_state.chat_session,
+                    chat_session=failed_state.chat_session,
+                    run=failed_state.run,
                     harness=harness,
                     harness_observability=None,
                     failure_code=exc.failure.code,
@@ -370,7 +379,8 @@ class ChatTurnService:
                 turn_request_state=failed_state,
                 observability=self._build_turn_observability(
                     request_id=request_id,
-                    chat_session=turn_request_state.chat_session,
+                    chat_session=failed_state.chat_session,
+                    run=failed_state.run,
                     harness=harness,
                     harness_observability=None,
                     failure_code="unexpected_error",
@@ -393,7 +403,8 @@ class ChatTurnService:
             turn_request_state=completed_state,
             observability=self._build_turn_observability(
                 request_id=request_id,
-                chat_session=turn_request_state.chat_session,
+                chat_session=completed_state.chat_session,
+                run=completed_state.run,
                 harness=harness,
                 harness_observability=harness_result.observability,
             ),
@@ -405,6 +416,7 @@ class ChatTurnService:
         *,
         request_id: str,
         chat_session: ChatSession | None,
+        run: ChatSessionRun | None = None,
         harness: ChatHarness | None = None,
         harness_observability: ChatHarnessObservability | None = None,
         failure_code: str | None = None,
@@ -432,6 +444,8 @@ class ChatTurnService:
                 if harness_observability is None or harness_observability.request_id is None
                 else harness_observability.request_id
             ),
+            run_id=None if run is None else run.id,
+            run_kind=None if run is None else run.run_kind,
             failure_code=failure_code,
             tags={} if harness_observability is None else harness_observability.tags,
         )
