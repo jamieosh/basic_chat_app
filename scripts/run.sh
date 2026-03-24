@@ -5,14 +5,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-HOST="127.0.0.1"
-PORT="8000"
+HOST="${BCA_HOST:-127.0.0.1}"
+PORT="${BCA_PORT:-8000}"
 RELOAD=0
 
-APP_HOME="${BASIC_CHAT_APP_HOME:-${REPO_DIR}}"
-RUNTIME_DIR="${APP_HOME}/.runtime"
+APP_HOME="${BASIC_CHAT_APP_HOME:-${BCA_HOME:-${REPO_DIR}}}"
+RUNTIME_DIR="${BCA_RUNTIME_DIR:-${APP_HOME}/.runtime}"
 PID_FILE="${RUNTIME_DIR}/chat-app.pid"
 LOG_FILE="${RUNTIME_DIR}/chat-app.log"
+ENV_FILE="${APP_HOME}/.env"
 
 usage() {
   cat <<'USAGE'
@@ -25,10 +26,11 @@ Commands:
   restart               Restart background server
   status                Show background server status
   logs                  Tail background server logs
+  config                Show resolved config paths and defaults
 
 Options:
-  --host <host>         Bind host (default: 127.0.0.1)
-  --port <port>         Bind port (default: 8000)
+  --host <host>         Bind host (default: BCA_HOST or 127.0.0.1)
+  --port <port>         Bind port (default: BCA_PORT or 8000)
   --reload              Enable uvicorn reload mode
   --help                Show help
 USAGE
@@ -157,6 +159,18 @@ tail_logs() {
   tail -n 100 -f "${LOG_FILE}"
 }
 
+show_config() {
+  log "APP_HOME=${APP_HOME}"
+  log "REPO_DIR=${REPO_DIR}"
+  log "ENV_FILE=${ENV_FILE}"
+  log "RUNTIME_DIR=${RUNTIME_DIR}"
+  log "PID_FILE=${PID_FILE}"
+  log "LOG_FILE=${LOG_FILE}"
+  log "HOST=${HOST}"
+  log "PORT=${PORT}"
+  log "RELOAD=${RELOAD}"
+}
+
 if [ "$#" -lt 1 ]; then
   usage
   exit 1
@@ -199,6 +213,12 @@ done
 need_cmd nohup
 UV_BIN="$(ensure_uv)"
 
+if [ "${RELOAD}" -eq 0 ]; then
+  case "${BCA_RELOAD:-0}" in
+    1|true|TRUE|yes|YES|on|ON) RELOAD=1 ;;
+  esac
+fi
+
 case "${COMMAND}" in
   foreground)
     cmd=("${UV_BIN}" run uvicorn main:app --host "${HOST}" --port "${PORT}")
@@ -223,6 +243,9 @@ case "${COMMAND}" in
     ;;
   logs)
     tail_logs
+    ;;
+  config)
+    show_config
     ;;
   *)
     die "Unknown command: ${COMMAND}"

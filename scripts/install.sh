@@ -4,16 +4,17 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+INSTALL_HOME_OVERRIDE="${BASIC_CHAT_APP_HOME:-${BCA_HOME:-}}"
 
 if [ -d "${SCRIPT_REPO_ROOT}/.git" ] && [ -f "${SCRIPT_REPO_ROOT}/pyproject.toml" ]; then
   DEFAULT_INSTALL_DIR="${SCRIPT_REPO_ROOT}"
   DEFAULT_REPO_URL="$(git -C "${SCRIPT_REPO_ROOT}" config --get remote.origin.url || true)"
 else
-  DEFAULT_INSTALL_DIR="${BASIC_CHAT_APP_HOME:-${HOME}/.local/share/basic_chat_app}"
+  DEFAULT_INSTALL_DIR="${INSTALL_HOME_OVERRIDE:-${HOME}/.local/share/basic_chat_app}"
   DEFAULT_REPO_URL=""
 fi
 
-INSTALL_DIR="${BASIC_CHAT_APP_HOME:-${DEFAULT_INSTALL_DIR}}"
+INSTALL_DIR="${INSTALL_HOME_OVERRIDE:-${DEFAULT_INSTALL_DIR}}"
 BRANCH="main"
 REPO_URL="${DEFAULT_REPO_URL}"
 SKIP_ENV_PROMPT=0
@@ -27,7 +28,7 @@ Usage: scripts/install.sh [options]
 Install or refresh this project, then sync dependencies with uv.
 
 Options:
-  --install-dir <path>   Install/refresh location (default: BASIC_CHAT_APP_HOME or detected repo)
+  --install-dir <path>   Install/refresh location (default: BASIC_CHAT_APP_HOME/BCA_HOME or detected repo)
   --repo-url <url>       Git URL used if install directory is missing
   --branch <name>        Git branch to clone/pull (default: main)
   --skip-env             Skip interactive .env generation
@@ -67,9 +68,9 @@ prompt_text() {
   local reply=""
 
   if [ -n "${default_value}" ]; then
-    printf '%s [%s]: ' "${label}" "${default_value}"
+    printf '%s [%s]: ' "${label}" "${default_value}" >&2
   else
-    printf '%s: ' "${label}"
+    printf '%s: ' "${label}" >&2
   fi
   IFS= read -r reply || true
 
@@ -88,12 +89,12 @@ prompt_secret() {
 
   while true; do
     if [ -n "${existing_value}" ]; then
-      printf '%s (leave blank to keep current): ' "${label}"
+      printf '%s (leave blank to keep current; input hidden): ' "${label}" >&2
     else
-      printf '%s: ' "${label}"
+      printf '%s (input hidden): ' "${label}" >&2
     fi
     IFS= read -r -s reply || true
-    printf '\n'
+    printf '\n' >&2
 
     if [ -z "${reply}" ] && [ -n "${existing_value}" ]; then
       printf '%s' "${existing_value}"
@@ -198,6 +199,33 @@ collect_api_key_vars() {
   fi
 }
 
+validate_env_configuration() {
+  local repo_dir="$1"
+  local env_file="${repo_dir}/.env"
+  local harness=""
+  local required_key=""
+  local required_value=""
+
+  if [ ! -f "${env_file}" ]; then
+    warn "Missing ${env_file}. Run with interactive env setup to configure API keys."
+    return 1
+  fi
+
+  harness="$(get_env_value "${env_file}" "DEFAULT_CHAT_HARNESS_KEY")"
+  if [ -z "${harness}" ]; then
+    harness="openai"
+  fi
+
+  required_key="$(printf '%s' "${harness}" | tr '[:lower:]' '[:upper:]')_API_KEY"
+  required_value="$(get_env_value "${env_file}" "${required_key}")"
+  if [ -z "${required_value}" ]; then
+    warn "Missing ${required_key} in ${env_file}."
+    return 1
+  fi
+
+  return 0
+}
+
 configure_env_file() {
   local repo_dir="$1"
   local env_example="${repo_dir}/.env.example"
@@ -267,6 +295,7 @@ configure_env_file() {
   if [ "${#provider_options[@]}" -gt 0 ]; then
     log "Available harness defaults from .env.example: ${provider_options[*]}"
   fi
+  log "Press Enter to keep defaults. API key input is hidden."
 
   while true; do
     harness="$(prompt_text "DEFAULT_CHAT_HARNESS_KEY" "${default_harness}")"
@@ -410,7 +439,14 @@ else
   log "Skipping bca-* wrapper install (--skip-cli-wrappers)"
 fi
 
+ENV_OK=0
+if validate_env_configuration "${INSTALL_DIR}"; then
+  ENV_OK=1
+fi
+
 log "Install complete."
+log "App home: ${INSTALL_DIR}"
+log "Config file: ${INSTALL_DIR}/.env"
 log "Run the app with:"
 if [ "${SKIP_CLI_WRAPPERS}" -eq 0 ]; then
   log "  bca-run foreground --reload"
@@ -418,8 +454,16 @@ if [ "${SKIP_CLI_WRAPPERS}" -eq 0 ]; then
   log "  bca-run start"
   log "Update with:"
   log "  bca-update"
+  if [ "${ENV_OK}" -eq 0 ]; then
+    log "Configure API keys now with:"
+    log "  bca-update --refresh-env"
+  fi
 else
   log "  cd ${INSTALL_DIR} && ./scripts/run.sh foreground --reload"
   log "Run in background with:"
   log "  cd ${INSTALL_DIR} && ./scripts/run.sh start"
+  if [ "${ENV_OK}" -eq 0 ]; then
+    log "Configure API keys now with:"
+    log "  cd ${INSTALL_DIR} && ./scripts/install.sh"
+  fi
 fi

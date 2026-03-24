@@ -89,6 +89,16 @@ git clone git@github.com:jamieosh/basic_chat_app.git ~/.local/share/basic_chat_a
 After opening a new terminal, `bca-install`, `bca-update`, and `bca-run` work from anywhere (if `~/.local/bin` is on your `PATH`).
 Works on macOS and Linux (including Raspberry Pi).
 
+Your app config file is:
+```bash
+~/.local/share/basic_chat_app/.env
+```
+
+If install did not prompt for keys (or you want to re-enter them):
+```bash
+bca-update --refresh-env
+```
+
 To update an existing install from GitHub:
 ```bash
 bca-update
@@ -209,6 +219,15 @@ Notes:
 - Background logs are written to `${BASIC_CHAT_APP_HOME:-<repo>}/.runtime/chat-app.log`.
 - PID tracking is written to `${BASIC_CHAT_APP_HOME:-<repo>}/.runtime/chat-app.pid`.
 - `scripts/run.sh start` does not survive reboot by itself. For reboot-persistent runtime, wrap it with your OS service manager (`systemd` on Linux/Raspberry Pi, `launchd` on macOS).
+- `bca-run config` prints resolved paths and runtime defaults.
+
+Runtime env vars for `bca-run`:
+
+- `BASIC_CHAT_APP_HOME` or `BCA_HOME`: install/home directory for repo + runtime files.
+- `BCA_HOST`: default bind host (for example `0.0.0.0`).
+- `BCA_PORT`: default bind port.
+- `BCA_RELOAD`: default reload behavior (`1/true/yes/on` enables reload).
+- `BCA_RUNTIME_DIR`: override runtime directory for PID/log files.
 
 To refresh global wrappers manually:
 ```bash

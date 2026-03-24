@@ -68,12 +68,12 @@ create_wrapper() {
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_HOME="\${BASIC_CHAT_APP_HOME:-${default_home}}"
+APP_HOME="\${BASIC_CHAT_APP_HOME:-\${BCA_HOME:-${default_home}}}"
 TARGET="\${APP_HOME}/scripts/${target_script}"
 
 if [ ! -x "\${TARGET}" ]; then
   printf 'Error: missing executable script: %s\n' "\${TARGET}" >&2
-  printf 'Hint: set BASIC_CHAT_APP_HOME to your checkout path.\n' >&2
+  printf 'Hint: set BASIC_CHAT_APP_HOME (or BCA_HOME) to your checkout path.\n' >&2
   exit 1
 fi
 
