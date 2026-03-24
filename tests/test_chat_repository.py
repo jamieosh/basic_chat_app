@@ -470,6 +470,73 @@ def test_chat_repository_replays_duplicate_processing_turn_request_without_new_w
     ] == ["Hello"]
 
 
+def test_chat_repository_start_turn_persists_run_identity_link(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+
+    start_result = repository.start_turn_request(
+        client_id="client-a",
+        request_id="request-run-link",
+        chat_session_id=None,
+        message="Hello",
+    )
+    assert start_result.turn_request_state is not None
+    assert start_result.turn_request_state.turn_request.run_id is not None
+    assert start_result.turn_request_state.run is not None
+    assert start_result.turn_request_state.run.id == start_result.turn_request_state.turn_request.run_id
+    assert start_result.turn_request_state.run.status == "processing"
+
+    completed_state = repository.finalize_turn_success(
+        client_id="client-a",
+        request_id="request-run-link",
+        assistant_content="Hi there",
+    )
+    assert completed_state.run is not None
+    assert completed_state.run.status == "completed"
+    assert completed_state.turn_request.run_id == completed_state.run.id
+
+
+def test_chat_repository_duplicate_turn_replay_does_not_create_extra_runs(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+
+    start_result = repository.start_turn_request(
+        client_id="client-a",
+        request_id="request-duplicate-run",
+        chat_session_id=None,
+        message="Hello",
+    )
+    duplicate_result = repository.start_turn_request(
+        client_id="client-a",
+        request_id="request-duplicate-run",
+        chat_session_id=None,
+        message="Hello again",
+    )
+
+    assert start_result.turn_request_state is not None
+    assert duplicate_result.turn_request_state is not None
+    assert start_result.turn_request_state.turn_request.run_id is not None
+    assert duplicate_result.turn_request_state.turn_request.run_id is not None
+    assert (
+        start_result.turn_request_state.turn_request.run_id
+        == duplicate_result.turn_request_state.turn_request.run_id
+    )
+
+    with sqlite3.connect(db_path) as connection:
+        run_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM chat_session_runs
+            WHERE client_id = ? AND request_id = ?
+            """,
+            ("client-a", "request-duplicate-run"),
+        ).fetchone()
+    assert run_count is not None
+    assert run_count[0] == 1
+
+
 def test_chat_repository_replays_duplicate_failed_turn_request_state(tmp_path):
     db_path = tmp_path / "chat.db"
     bootstrap_database(db_path)
