@@ -43,7 +43,7 @@ Risks:
 - [x] Step 2: Extend repository domain models and row mappers with session/run-groundwork types and link turn-request lifecycle writes to persisted run identity. — files: `persistence/repository.py`, `persistence/__init__.py`
 - [x] Step 3: Update service-layer request lifecycle seams to carry the new run/session-groundwork fields while preserving current route contracts and harness execution flow. — files: `services/chat_turns.py`, `tests/test_chat_turn_service.py`
 - [x] Step 4: Confirm no-regression route behavior for send/replay/restore with the new persistence model in place. — files: `tests/test_main_routes.py`
-- [ ] Step 5: Align contributor docs with the additive Phase 4 session/run groundwork and compatibility posture (no UI workflow change yet). — files: `README.md`, `AGENTS.md`
+- [x] Step 5: Align contributor docs with the additive Phase 4 session/run groundwork and compatibility posture (no UI workflow change yet). — files: `README.md`, `AGENTS.md`
 
 ## Tests to Add
 - [x] `test_bootstrap_database_backfills_phase4_run_identity_for_legacy_rows` -> covers AC: Database bootstrap adds new structures and keeps old DBs readable.
@@ -53,13 +53,13 @@ Risks:
 - [x] `test_send_message_routes_preserve_existing_htmx_chat_session_behavior_after_phase4_schema` -> covers AC: no visible route/HTMX regression.
 
 ## Definition of Done
-- [ ] All acceptance criteria checked off
-- [ ] All new or updated tests pass
-- [ ] `uv run ruff check .` passes
-- [ ] `uv run mypy .` passes
+- [x] All acceptance criteria checked off
+- [x] All new or updated tests pass
+- [x] `uv run ruff check .` passes
+- [x] `uv run mypy .` passes
 - [ ] `uv run python -m pytest` passes
 - [ ] `README.md` updated if user-visible behavior changed
 - [ ] E2E or visual checks run when UI behavior changes materially
 - [ ] `CHANGELOG.md` updated when the feature ships
 - [ ] Matching phase backlog and `plans/done/PHASE X DONE.md` updated when the feature ships
-- [ ] `AGENTS.md` updated if architecture or contributor guidance changes
+- [x] `AGENTS.md` updated if architecture or contributor guidance changes

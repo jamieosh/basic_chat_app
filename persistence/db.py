@@ -188,6 +188,8 @@ def _backfill_turn_request_run_links(connection: sqlite3.Connection) -> None:
                     str(row["updated_at"]),
                 ),
             )
+            if cursor.lastrowid is None:  # pragma: no cover - defensive against unexpected SQLite behavior
+                raise RuntimeError("Backfilled chat session run insert did not return an id.")
             run_id = int(cursor.lastrowid)
         else:
             run_id = int(run_row["id"])
