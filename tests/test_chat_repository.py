@@ -245,6 +245,139 @@ def test_bootstrap_database_backfills_harness_binding_for_existing_chat_sessions
     assert loaded_chat.harness_version is None
 
 
+def test_bootstrap_database_backfills_phase4_run_identity_for_legacy_rows(tmp_path):
+    db_path = tmp_path / "chat.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE chat_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT NOT NULL,
+                title TEXT NOT NULL CHECK(title <> ''),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                archived_at TEXT,
+                deleted_at TEXT
+            );
+
+            CREATE TABLE chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_session_id INTEGER NOT NULL,
+                position INTEGER NOT NULL CHECK(position >= 0),
+                role TEXT NOT NULL CHECK(role IN ('system', 'user', 'assistant')),
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (chat_session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                UNIQUE (chat_session_id, position)
+            );
+
+            CREATE TABLE chat_turn_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT NOT NULL,
+                request_id TEXT NOT NULL,
+                chat_session_id INTEGER NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('processing', 'completed', 'failed', 'conflicted')),
+                user_message_id INTEGER NOT NULL,
+                assistant_message_id INTEGER,
+                failure_code TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (chat_session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_message_id) REFERENCES chat_messages(id) ON DELETE CASCADE,
+                FOREIGN KEY (assistant_message_id) REFERENCES chat_messages(id) ON DELETE CASCADE,
+                UNIQUE (client_id, request_id)
+            );
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO chat_sessions (
+                client_id,
+                title,
+                created_at,
+                updated_at,
+                archived_at,
+                deleted_at
+            ) VALUES (?, ?, ?, ?, NULL, NULL)
+            """,
+            ("client-a", "Legacy chat", "2026-03-22T10:00:00+00:00", "2026-03-22T10:00:00+00:00"),
+        )
+        connection.execute(
+            """
+            INSERT INTO chat_messages (
+                chat_session_id,
+                position,
+                role,
+                content,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (1, 0, "user", "Hello", "2026-03-22T10:00:01+00:00"),
+        )
+        connection.execute(
+            """
+            INSERT INTO chat_turn_requests (
+                client_id,
+                request_id,
+                chat_session_id,
+                status,
+                user_message_id,
+                assistant_message_id,
+                failure_code,
+                created_at,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "client-a",
+                "legacy-request-1",
+                1,
+                "failed",
+                1,
+                None,
+                "provider_error",
+                "2026-03-22T10:00:01+00:00",
+                "2026-03-22T10:00:02+00:00",
+            ),
+        )
+
+    bootstrap_database(db_path)
+    with sqlite3.connect(db_path) as connection:
+        run_table = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'chat_session_runs'"
+        ).fetchone()
+        assert run_table is not None
+
+        turn_request_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(chat_turn_requests)").fetchall()
+        }
+        assert "run_id" in turn_request_columns
+
+        turn_request_row = connection.execute(
+            "SELECT run_id FROM chat_turn_requests WHERE client_id = ? AND request_id = ?",
+            ("client-a", "legacy-request-1"),
+        ).fetchone()
+        assert turn_request_row is not None
+        assert turn_request_row[0] is not None
+
+        run_row = connection.execute(
+            """
+            SELECT client_id, request_id, chat_session_id, run_kind, status
+            FROM chat_session_runs
+            WHERE id = ?
+            """,
+            (turn_request_row[0],),
+        ).fetchone()
+        assert run_row is not None
+        assert run_row == (
+            "client-a",
+            "legacy-request-1",
+            1,
+            "chat_send",
+            "failed",
+        )
+
+
 def test_chat_repository_keeps_default_title_sequence_after_delete_and_archive(tmp_path):
     db_path = tmp_path / "chat.db"
     bootstrap_database(db_path)
