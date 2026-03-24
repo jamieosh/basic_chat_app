@@ -36,11 +36,24 @@ class ChatMessage:
 
 
 @dataclass(frozen=True)
+class ChatSessionRun:
+    id: int
+    client_id: str
+    request_id: str
+    chat_session_id: int
+    run_kind: str
+    status: Literal["processing", "completed", "failed", "conflicted"]
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
 class ChatTurnRequest:
     id: int
     client_id: str
     request_id: str
     chat_session_id: int
+    run_id: int | None
     status: Literal["processing", "completed", "failed", "conflicted"]
     user_message_id: int
     assistant_message_id: int | None
@@ -53,6 +66,7 @@ class ChatTurnRequest:
 class ChatTurnRequestState:
     turn_request: ChatTurnRequest
     chat_session: ChatSession | None
+    run: ChatSessionRun | None
     user_message: ChatMessage
     assistant_message: ChatMessage | None
 
@@ -286,21 +300,38 @@ class ChatRepository:
                     content=message,
                     timestamp=timestamp,
                 )
+                run_row = _insert_session_run_row(
+                    connection,
+                    client_id=client_id,
+                    request_id=request_id,
+                    chat_session_id=resolved_chat_session.id,
+                    status="processing",
+                    timestamp=timestamp,
+                )
                 connection.execute(
                     """
                     INSERT INTO chat_turn_requests (
                         client_id,
                         request_id,
                         chat_session_id,
+                        run_id,
                         status,
                         user_message_id,
                         assistant_message_id,
                         failure_code,
                         created_at,
                         updated_at
-                    ) VALUES (?, ?, ?, 'processing', ?, NULL, NULL, ?, ?)
+                    ) VALUES (?, ?, ?, ?, 'processing', ?, NULL, NULL, ?, ?)
                     """,
-                    (client_id, request_id, resolved_chat_session.id, user_message.id, timestamp, timestamp),
+                    (
+                        client_id,
+                        request_id,
+                        resolved_chat_session.id,
+                        run_row.id,
+                        user_message.id,
+                        timestamp,
+                        timestamp,
+                    ),
                 )
                 connection.execute(
                     "UPDATE chat_sessions SET updated_at = ? WHERE id = ?",
@@ -399,6 +430,12 @@ class ChatRepository:
                     """,
                     (assistant_message.id, timestamp, int(turn_request_row["id"])),
                 )
+                _sync_run_status(
+                    connection,
+                    turn_request_row=turn_request_row,
+                    status="completed",
+                    timestamp=timestamp,
+                )
                 connection.execute(
                     "UPDATE chat_sessions SET updated_at = ? WHERE id = ?",
                     (timestamp, int(turn_request_row["chat_session_id"])),
@@ -458,6 +495,12 @@ class ChatRepository:
                     """,
                     (failure_code, timestamp, int(turn_request_row["id"])),
                 )
+                _sync_run_status(
+                    connection,
+                    turn_request_row=turn_request_row,
+                    status="failed",
+                    timestamp=timestamp,
+                )
                 state = _hydrate_turn_request_state(
                     connection,
                     _require_turn_request_row(connection, client_id=client_id, request_id=request_id),
@@ -484,6 +527,12 @@ class ChatRepository:
             WHERE id = ?
             """,
             (timestamp, int(turn_request_row["id"])),
+        )
+        _sync_run_status(
+            connection,
+            turn_request_row=turn_request_row,
+            status="conflicted",
+            timestamp=timestamp,
         )
         return _hydrate_turn_request_state(
             connection,
@@ -611,6 +660,38 @@ def _insert_chat_row(
     return row
 
 
+def _insert_session_run_row(
+    connection: sqlite3.Connection,
+    *,
+    client_id: str,
+    request_id: str,
+    chat_session_id: int,
+    status: Literal["processing", "completed", "failed", "conflicted"],
+    timestamp: str,
+) -> ChatSessionRun:
+    cursor = connection.execute(
+        """
+        INSERT INTO chat_session_runs (
+            client_id,
+            request_id,
+            chat_session_id,
+            run_kind,
+            status,
+            created_at,
+            updated_at
+        ) VALUES (?, ?, ?, 'chat_send', ?, ?, ?)
+        """,
+        (client_id, request_id, chat_session_id, status, timestamp, timestamp),
+    )
+    row = connection.execute(
+        "SELECT * FROM chat_session_runs WHERE id = ?",
+        (cursor.lastrowid,),
+    ).fetchone()
+    if row is None:  # pragma: no cover - defensive against unexpected SQLite behavior
+        raise RuntimeError("Newly created chat session run could not be reloaded.")
+    return _row_to_chat_session_run(row)
+
+
 def _next_message_position(connection: sqlite3.Connection, *, chat_session_id: int) -> int:
     row = connection.execute(
         """
@@ -670,6 +751,89 @@ def _load_turn_request_row(
     ).fetchone()
 
 
+def _load_run_row_by_request(
+    connection: sqlite3.Connection,
+    *,
+    client_id: str,
+    request_id: str,
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT *
+        FROM chat_session_runs
+        WHERE client_id = ? AND request_id = ?
+        """,
+        (client_id, request_id),
+    ).fetchone()
+
+
+def _load_run_row(connection: sqlite3.Connection, *, run_id: int | None) -> sqlite3.Row | None:
+    if run_id is None:
+        return None
+    return connection.execute(
+        """
+        SELECT *
+        FROM chat_session_runs
+        WHERE id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+
+
+def _sync_run_status(
+    connection: sqlite3.Connection,
+    *,
+    turn_request_row: sqlite3.Row,
+    status: Literal["processing", "completed", "failed", "conflicted"],
+    timestamp: str,
+) -> None:
+    run_id = None if turn_request_row["run_id"] is None else int(turn_request_row["run_id"])
+    if run_id is None:
+        run_row = _load_run_row_by_request(
+            connection,
+            client_id=str(turn_request_row["client_id"]),
+            request_id=str(turn_request_row["request_id"]),
+        )
+        if run_row is None:
+            run = _insert_session_run_row(
+                connection,
+                client_id=str(turn_request_row["client_id"]),
+                request_id=str(turn_request_row["request_id"]),
+                chat_session_id=int(turn_request_row["chat_session_id"]),
+                status=status,
+                timestamp=timestamp,
+            )
+            run_id = run.id
+        else:
+            run_id = int(run_row["id"])
+            connection.execute(
+                """
+                UPDATE chat_session_runs
+                SET status = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (status, timestamp, run_id),
+            )
+        connection.execute(
+            """
+            UPDATE chat_turn_requests
+            SET run_id = ?
+            WHERE id = ?
+            """,
+            (run_id, int(turn_request_row["id"])),
+        )
+        return
+
+    connection.execute(
+        """
+        UPDATE chat_session_runs
+        SET status = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (status, timestamp, run_id),
+    )
+
+
 def _require_turn_request_row(
     connection: sqlite3.Connection,
     *,
@@ -714,9 +878,21 @@ def _hydrate_turn_request_state(
     if chat_row is not None:
         chat_session = _row_to_chat_session(chat_row)
 
+    run = None
+    run_row = _load_run_row(connection, run_id=turn_request.run_id)
+    if run_row is None:
+        run_row = _load_run_row_by_request(
+            connection,
+            client_id=turn_request.client_id,
+            request_id=turn_request.request_id,
+        )
+    if run_row is not None:
+        run = _row_to_chat_session_run(run_row)
+
     return ChatTurnRequestState(
         turn_request=turn_request,
         chat_session=chat_session,
+        run=run,
         user_message=user_message,
         assistant_message=_load_message_row(
             connection,
@@ -752,12 +928,26 @@ def _row_to_chat_message(row: sqlite3.Row) -> ChatMessage:
     )
 
 
+def _row_to_chat_session_run(row: sqlite3.Row) -> ChatSessionRun:
+    return ChatSessionRun(
+        id=int(row["id"]),
+        client_id=str(row["client_id"]),
+        request_id=str(row["request_id"]),
+        chat_session_id=int(row["chat_session_id"]),
+        run_kind=str(row["run_kind"]),
+        status=row["status"],
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
+    )
+
+
 def _row_to_chat_turn_request(row: sqlite3.Row) -> ChatTurnRequest:
     return ChatTurnRequest(
         id=int(row["id"]),
         client_id=str(row["client_id"]),
         request_id=str(row["request_id"]),
         chat_session_id=int(row["chat_session_id"]),
+        run_id=None if row["run_id"] is None else int(row["run_id"]),
         status=row["status"],
         user_message_id=int(row["user_message_id"]),
         assistant_message_id=(

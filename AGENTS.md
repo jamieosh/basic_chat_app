@@ -2,15 +2,16 @@
 
 ## Last Reviewed
 
-- 2026-03-22
+- 2026-03-24
 
 ## Project Summary
 
-This repository is a FastAPI + HTMX chat workbench with persisted multi-turn chats, route-backed chat restoration, and a Phase 3 chat-harness boundary with startup-wired harness resolution and stable per-chat runtime binding.
+This repository is a FastAPI + HTMX chat workbench with persisted multi-turn chats, route-backed chat restoration, a Phase 3 chat-harness boundary, and early Phase 4 session/run groundwork.
 
 Current stage:
 - Phase 2 baseline complete
-- Phase 3 harness decoupling in progress
+- Phase 3 harness decoupling complete
+- Phase 4 session/run persistence groundwork in progress
 - Multi-chat, persisted, browser-cookie-scoped local-first chat experience
 - Still not a full production chat platform
 
@@ -28,6 +29,7 @@ Current stage:
 - Resolves harness execution through a canonical `run_events()` surface, while the current web flow still collects one deterministic final reply for non-streaming HTMX rendering
 - Keeps the harness contract ready for future tool experiments with normalized tool-call/tool-result events and an optional tool orchestration hook
 - Persists a stable harness key and optional harness version on each chat session
+- Persists explicit run identity and lifecycle status per accepted send via `chat_session_runs`, linked to turn requests
 - Lets harness-owned context builders assemble model-facing prompt and transcript context from the persisted raw conversation record
 - Formats text/code-block output into HTML
 - Returns inline bot message HTML for HTMX insertion
@@ -50,8 +52,8 @@ Current stage:
 - `services/`
   - `chat_turns.py`: small control/service layer for turn-request lifecycle, harness resolution, normalized execution/failure finalization, failure presentation, observability shaping, and idempotent replay coordination
 - `persistence/`
-  - `db.py`: SQLite bootstrap and additive schema/backfill for persisted harness binding columns
-  - `repository.py`: chat, message, persisted harness binding, and turn-request persistence helpers
+  - `db.py`: SQLite bootstrap and additive schema/backfill for persisted harness binding and run-identity columns/tables
+  - `repository.py`: chat, message, run record, persisted harness binding, and turn-request persistence helpers
 - `utils/`
   - `client_identity.py`: browser-cookie-scoped anonymous client identity
   - `diagnostics.py`: startup and readiness diagnostics
@@ -110,6 +112,7 @@ Current stage:
 - Existing chat URLs restore the saved transcript on full page load.
 - Follow-up sends append to the same persisted chat until the user starts a new chat or switches chats.
 - Duplicate request IDs replay the stored outcome instead of creating duplicate turns.
+- Turn requests now persist explicit run linkage and run status while preserving current route and HTMX behavior.
 - The app layer now depends on normalized harness contracts, registry-backed harness resolution, and persisted chat binding rather than provider SDK exceptions or route-owned harness selection.
 - The control/service layer now owns normalized harness execution coordination, persisted failure finalization, and per-turn observability shaping so routes can stay focused on HTTP validation and rendering.
 - The default shipped runtime remains OpenAI-backed, but Anthropic is now available through backend configuration and provider-specific behavior and failure translation should stay inside harness adapter code.
@@ -126,7 +129,7 @@ Current stage:
 ## Known Gaps (Important)
 
 - No auth, user-facing archive browsing, rate controls, or streaming response support.
-- The harness contract is normalized and ready for further Phase 3 work, but the repo is still mid-migration toward richer runtime binding, streaming-ready events, and alternative harness implementations.
+- Phase 4 session/run groundwork is additive and persistence-first; user-facing lineage, replay/resume workflows, and non-transcript artifacts are not shipped yet.
 
 ## Guidance For Future Contributors
 

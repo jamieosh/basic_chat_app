@@ -25,6 +25,7 @@ This README focuses on project scope, current behavior, setup, and contributor w
 - Deterministic default chat titles plus confirmed delete behavior that returns users to the next visible chat or the start screen.
 - `New chat` start screen plus chat restoration through route-backed URLs.
 - In-flight request locking plus persisted request IDs so duplicate submissions are replayed instead of being processed twice.
+- Persisted run-identity groundwork for each accepted send (`chat_session_runs` + turn-request linkage) while keeping the existing chat-first HTMX UX unchanged.
 - Lightweight loading feedback while switching chats.
 - Inline failure handling for validation, service-unavailable, and transport-error states.
 - OpenAI-backed default harness adapter plus a shipped Anthropic proof adapter, both resolved through the normalized event-capable `ChatHarness` surface, with `run_events()` canonical and `run()` acting as the non-streaming collector.
@@ -60,6 +61,7 @@ This README focuses on project scope, current behavior, setup, and contributor w
 
 - Each chat send includes a persisted request ID so exact duplicate POSTs for the same browser/client replay the stored outcome instead of creating duplicate turns.
 - Each chat session persists a stable harness binding, so later sends resolve through the same configured harness key for the life of that chat.
+- Each accepted send is linked to a persisted run identity record so run lifecycle status is explicit even though the current UI remains chat-first.
 - If a target chat is already missing, foreign, deleted, or archived when `/send-message-htmx` starts, the route returns `404` and persists nothing for that request.
 - Once a send is accepted, the user turn is durable even if the assistant reply fails later.
 - If a chat is deleted or archived while a send is already in flight, delete/archive wins: the user turn remains, the assistant turn is not persisted, and the route returns `409`.

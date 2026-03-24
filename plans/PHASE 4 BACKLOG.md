@@ -6,17 +6,6 @@ Items are ordered by priority. Each item gets a feature branch `codex/<kebab-slu
 
 ---
 
-## P4-01 — Session Model And Persistence Groundwork
-
-**Size:** Large  
-**Dependencies:** None
-
-This item makes the session concept explicit in the persistence model, service vocabulary, and contributor docs without breaking the current chat restore and send flow. It should also establish the minimum groundwork for explicit run identity instead of relying only on the current turn-request mechanics. It matters because every later Phase 4 slice depends on the app no longer treating transcript history as the whole durable object of the system. Out of scope for this item are user-facing branching workflows, artifact records, or broad UI redesign.
-
-**What the user will see:** Little or no visible UI change yet. The main effect should be a more stable foundation for later session-oriented features without regressing the existing chat experience.
-
----
-
 ## P4-02 — Session Metadata And Inspectability Surface
 
 **Size:** Medium  

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-03-24
+
+### Ship Phase 4 Session Model And Persistence Groundwork
+
+- Added explicit run-identity persistence groundwork by extending `persistence/db.py` with `chat_session_runs`, adding `chat_turn_requests.run_id`, and shipping additive bootstrap/backfill paths for legacy local databases.
+- Extended `persistence/repository.py`, `persistence/__init__.py`, and `services/chat_turns.py` so each accepted send links to a persisted run record and run lifecycle status stays synchronized through `processing`, `completed`, `failed`, and `conflicted` transitions.
+- Added regression coverage in `tests/test_chat_repository.py`, `tests/test_chat_turn_service.py`, and `tests/test_main_routes.py` for run-link persistence, duplicate replay stability, and no-regression HTMX route behavior.
+- Updated contributor-facing docs in `README.md` and `AGENTS.md` to reflect the additive Phase 4 session/run groundwork with no broad user-visible workflow change yet.
+- Verification summary: `.venv/bin/ruff check .` and `.venv/bin/mypy .` passed; `PYTHONPATH=. .venv/bin/pytest` ran with `267 passed, 16 errors`, where all errors were in `tests/e2e/test_chat_smoke.py` setup due missing `uv` binary in this environment.
+
 ## 2026-03-22
 
 ### Ship Phase 3 Anthropic Harness Proof Implementation
