@@ -229,6 +229,18 @@ Runtime env vars for `bca-run`:
 - `BCA_RELOAD`: default reload behavior (`1/true/yes/on` enables reload).
 - `BCA_RUNTIME_DIR`: override runtime directory for PID/log files.
 
+You can set these in your shell or in your app `.env` file.
+For LAN access on a Raspberry Pi (`http://raspberrypi4.local:8000`), add:
+```dotenv
+BCA_HOST=0.0.0.0
+BCA_PORT=8000
+```
+
+Then check resolved values with:
+```bash
+bca-run config
+```
+
 To refresh global wrappers manually:
 ```bash
 ./scripts/install_wrappers.sh

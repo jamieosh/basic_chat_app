@@ -5,15 +5,69 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-HOST="${BCA_HOST:-127.0.0.1}"
-PORT="${BCA_PORT:-8000}"
+DEFAULT_HOST="127.0.0.1"
+DEFAULT_PORT="8000"
 RELOAD=0
 
 APP_HOME="${BASIC_CHAT_APP_HOME:-${BCA_HOME:-${REPO_DIR}}}"
+ENV_FILE="${APP_HOME}/.env"
+
+load_runtime_env_file() {
+  local had_bca_host=0
+  local had_bca_port=0
+  local had_bca_reload=0
+  local had_bca_runtime_dir=0
+  local ext_bca_host=""
+  local ext_bca_port=""
+  local ext_bca_reload=""
+  local ext_bca_runtime_dir=""
+
+  if [ "${BCA_HOST+x}" = "x" ]; then
+    had_bca_host=1
+    ext_bca_host="${BCA_HOST}"
+  fi
+  if [ "${BCA_PORT+x}" = "x" ]; then
+    had_bca_port=1
+    ext_bca_port="${BCA_PORT}"
+  fi
+  if [ "${BCA_RELOAD+x}" = "x" ]; then
+    had_bca_reload=1
+    ext_bca_reload="${BCA_RELOAD}"
+  fi
+  if [ "${BCA_RUNTIME_DIR+x}" = "x" ]; then
+    had_bca_runtime_dir=1
+    ext_bca_runtime_dir="${BCA_RUNTIME_DIR}"
+  fi
+
+  if [ -f "${ENV_FILE}" ]; then
+    # shellcheck disable=SC1090
+    set -a
+    . "${ENV_FILE}"
+    set +a
+  fi
+
+  # Explicit process env should override values loaded from .env.
+  if [ "${had_bca_host}" -eq 1 ]; then
+    BCA_HOST="${ext_bca_host}"
+  fi
+  if [ "${had_bca_port}" -eq 1 ]; then
+    BCA_PORT="${ext_bca_port}"
+  fi
+  if [ "${had_bca_reload}" -eq 1 ]; then
+    BCA_RELOAD="${ext_bca_reload}"
+  fi
+  if [ "${had_bca_runtime_dir}" -eq 1 ]; then
+    BCA_RUNTIME_DIR="${ext_bca_runtime_dir}"
+  fi
+}
+
+load_runtime_env_file
+
+HOST="${BCA_HOST:-${DEFAULT_HOST}}"
+PORT="${BCA_PORT:-${DEFAULT_PORT}}"
 RUNTIME_DIR="${BCA_RUNTIME_DIR:-${APP_HOME}/.runtime}"
 PID_FILE="${RUNTIME_DIR}/chat-app.pid"
 LOG_FILE="${RUNTIME_DIR}/chat-app.log"
-ENV_FILE="${APP_HOME}/.env"
 
 usage() {
   cat <<'USAGE'
