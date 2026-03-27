@@ -763,6 +763,42 @@ def test_chat_page_renders_full_stored_transcript(client):
     assert f'value="{chat.id}"' in response.text
 
 
+def test_chat_page_renders_session_inspectability_metadata_for_active_chat(client):
+    repository = client.app.state.chat_repository
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+
+    response = client.get(f"/chats/{chat.id}")
+
+    assert response.status_code == 200
+    assert 'aria-label="Session metadata"' in response.text
+    assert f"#{chat.id}" in response.text
+    assert "Created" in response.text
+    assert "Updated" in response.text
+    assert "Binding" in response.text
+    assert chat.harness_key in response.text
+    assert "No runs yet" in response.text
+
+
+def test_chat_page_inspectability_falls_back_when_bound_harness_is_missing(client):
+    repository = client.app.state.chat_repository
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    chat = repository.create_chat(
+        client_id="client-a",
+        title="Broken binding",
+        harness_key="missing",
+    )
+
+    response = client.get(f"/chats/{chat.id}")
+
+    assert response.status_code == 200
+    assert 'aria-label="Session metadata"' in response.text
+    assert "Binding" in response.text
+    assert "missing" in response.text
+    assert "Model" in response.text
+    assert "Unavailable" in response.text
+
+
 def test_chat_page_renders_delete_button_only_for_active_chat(client):
     repository = client.app.state.chat_repository
     client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
@@ -866,6 +902,78 @@ def test_chat_transcript_partial_renders_transcript_and_oob_updates(client):
     assert f'data-chat-id="{first_chat.id}"' in response.text
     assert f'data-chat-id="{second_chat.id}"' in response.text
     assert f'value="{first_chat.id}"' in response.text
+
+
+def test_chat_transcript_partial_keeps_session_metadata_aligned_to_selected_chat(client):
+    repository = client.app.state.chat_repository
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    first_chat = repository.create_chat(client_id="client-a", title="Chat 1")
+    second_chat = repository.create_chat(client_id="client-a", title="Chat 2")
+
+    started = repository.start_turn_request(
+        client_id="client-a",
+        request_id="metadata-transcript-run",
+        chat_session_id=first_chat.id,
+        message="First run",
+    )
+    assert started.turn_request_state is not None
+    assert started.turn_request_state.run is not None
+    repository.finalize_turn_success(
+        client_id="client-a",
+        request_id="metadata-transcript-run",
+        assistant_content="Completed",
+    )
+
+    first_response = client.get(f"/chats/{first_chat.id}/transcript")
+    second_response = client.get(f"/chats/{second_chat.id}/transcript")
+    start_response = client.get("/chat-start/transcript")
+
+    assert first_response.status_code == 200
+    assert 'aria-label="Session metadata"' in first_response.text
+    assert f"#{first_chat.id}" in first_response.text
+    assert f"#{started.turn_request_state.run.id}" in first_response.text
+    assert "chat_send" in first_response.text
+    assert "completed" in first_response.text
+
+    assert second_response.status_code == 200
+    assert 'aria-label="Session metadata"' in second_response.text
+    assert f"#{second_chat.id}" in second_response.text
+    assert "No runs yet" in second_response.text
+    assert f"#{started.turn_request_state.run.id}" not in second_response.text
+
+    assert start_response.status_code == 200
+    assert "Start a new chat" in start_response.text
+    assert 'aria-label="Session metadata"' not in start_response.text
+
+
+def test_send_message_response_includes_latest_run_metadata_in_oob_header(client, monkeypatch):
+    _patch_harness_reply(monkeypatch, client.app.state.chat_harness, lambda _request: "Reply")
+    repository = client.app.state.chat_repository
+    client.cookies.set(CLIENT_ID_COOKIE_NAME, "client-a")
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+
+    response = _send_message(
+        client,
+        {
+            "message": "Hello",
+            "chat_session_id": str(chat.id),
+            "request_id": "metadata-send-request",
+        },
+    )
+    turn_state = repository.get_turn_request_state(
+        client_id="client-a",
+        request_id="metadata-send-request",
+    )
+
+    assert response.status_code == 200
+    assert turn_state is not None
+    assert turn_state.run is not None
+    assert 'id="chat-view-header"' in response.text
+    assert 'aria-label="Session metadata"' in response.text
+    assert f"#{chat.id}" in response.text
+    assert f"#{turn_state.run.id}" in response.text
+    assert turn_state.run.run_kind in response.text
+    assert turn_state.run.status in response.text
 
 
 def test_delete_chat_routes_to_next_visible_chat(client):

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-03-27
+
+### Session Metadata And Inspectability Surface
+
+- Shipped a read-only session inspectability surface in the active chat header so users can see stable session identity and timestamps, runtime binding details, and latest run metadata instead of only chat title and transcript context.
+- Added repository inspectability reads and latest-run lookup behavior in `persistence/repository.py` (exported via `persistence/__init__.py`) to support deterministic active-session metadata rendering.
+- Added route-owned metadata view shaping and bound-runtime resolution/fallback logic in `main.py`, plus header/template and styling updates in `templates/components/chat_view_header.html` and `static/css/chat.css`.
+- Added regression and UI coverage updates in `tests/test_chat_repository.py`, `tests/test_main_routes.py`, and `tests/e2e/test_chat_smoke.py`, and refreshed visual baselines in `tests/e2e/snapshots/` for intentional header/shell UI changes.
+- Verification summary: `uv run ruff check .`, `uv run mypy .`, and `uv run python -m pytest` passed (`290 passed`); `uv run python -m pytest tests/e2e/test_chat_smoke.py -q -k "visual_"` passed (`4 passed, 12 deselected`) after deliberate baseline refresh.
+
 ## 2026-03-24
 
 ### Ship Phase 4 Session Model And Persistence Groundwork

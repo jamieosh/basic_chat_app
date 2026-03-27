@@ -26,6 +26,7 @@ from persistence import (
     ChatMessage,
     ChatRepository,
     ChatSession,
+    ChatSessionRun,
     ChatTurnRequestState,
     StorageInitializationError,
     bootstrap_database,
@@ -72,6 +73,22 @@ class ChatPageState:
         if self.selected_chat is None:
             return None
         return self.selected_chat.id
+
+
+@dataclass(frozen=True)
+class ChatSessionInspectabilityView:
+    session_id: int
+    created_at: str
+    updated_at: str
+    harness_key: str
+    harness_version: str | None
+    runtime_display_name: str
+    runtime_model_display_name: str
+    runtime_provider_name: str | None
+    latest_run_id: int | None
+    latest_run_kind: str | None
+    latest_run_status: str | None
+    latest_run_updated_at: str | None
 
 
 def _get_chat_harness(request: Request) -> ChatHarness:
@@ -354,6 +371,82 @@ def _load_chat_page_state(
     )
 
 
+def _resolve_runtime_identity_for_chat_session(
+    request: Request,
+    *,
+    chat_session: ChatSession,
+) -> tuple[str, str, str | None]:
+    try:
+        registry = _get_chat_harness_registry(request)
+        bound_harness = registry.resolve_binding(
+            chat_session.harness_key,
+            version=chat_session.harness_version,
+        )
+        return (
+            bound_harness.identity.display_name,
+            bound_harness.identity.model_display_name,
+            bound_harness.identity.provider_name,
+        )
+    except (HTTPException, HarnessResolutionError):
+        return (
+            chat_session.harness_key,
+            "Unavailable",
+            None,
+        )
+
+
+def _latest_run_view_fields(run: ChatSessionRun | None) -> tuple[int | None, str | None, str | None, str | None]:
+    if run is None:
+        return (None, None, None, None)
+    return (
+        run.id,
+        run.run_kind,
+        run.status,
+        run.updated_at,
+    )
+
+
+def _build_session_inspectability_view(
+    request: Request,
+    *,
+    repository: ChatRepository | None,
+    page_state: ChatPageState,
+) -> ChatSessionInspectabilityView | None:
+    if repository is None or page_state.view_state != "active" or page_state.selected_chat is None:
+        return None
+
+    inspectability = repository.get_chat_session_inspectability(
+        chat_session_id=page_state.selected_chat.id,
+        client_id=page_state.selected_chat.client_id,
+    )
+    if inspectability is None:
+        return None
+
+    runtime_display_name, runtime_model_display_name, runtime_provider_name = (
+        _resolve_runtime_identity_for_chat_session(
+            request,
+            chat_session=inspectability.chat_session,
+        )
+    )
+    latest_run_id, latest_run_kind, latest_run_status, latest_run_updated_at = _latest_run_view_fields(
+        inspectability.latest_run
+    )
+    return ChatSessionInspectabilityView(
+        session_id=inspectability.chat_session.id,
+        created_at=inspectability.chat_session.created_at,
+        updated_at=inspectability.chat_session.updated_at,
+        harness_key=inspectability.chat_session.harness_key,
+        harness_version=inspectability.chat_session.harness_version,
+        runtime_display_name=runtime_display_name,
+        runtime_model_display_name=runtime_model_display_name,
+        runtime_provider_name=runtime_provider_name,
+        latest_run_id=latest_run_id,
+        latest_run_kind=latest_run_kind,
+        latest_run_status=latest_run_status,
+        latest_run_updated_at=latest_run_updated_at,
+    )
+
+
 def _base_template_context(
     request: Request,
     *,
@@ -386,6 +479,7 @@ def _chat_page_context(
     chat_available: bool,
     service_status_message: str,
     page_state: ChatPageState,
+    repository: ChatRepository | None,
 ) -> dict[str, object]:
     context = _base_template_context(
         request,
@@ -408,6 +502,11 @@ def _chat_page_context(
                 else "/"
             ),
             "oob_swap": False,
+            "session_inspectability": _build_session_inspectability_view(
+                request,
+                repository=repository,
+                page_state=page_state,
+            ),
         }
     )
     return context
@@ -507,6 +606,7 @@ def _render_chat_error_htmx_response(
             client_id=client_id,
             chat_session_id=active_chat_session_id,
         ),
+        repository=repository,
     )
     return _response_with_optional_push_url(
         _render_htmx_response(
@@ -553,6 +653,7 @@ def _render_turn_request_state_response(
                 client_id=client_id,
                 chat_session_id=active_chat_session_id,
             ),
+            repository=repository,
         )
         return _response_with_optional_push_url(
             _render_htmx_response(
@@ -741,6 +842,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             transcript_messages=[],
             view_state="start",
         )
+        repository: ChatRepository | None = None
         status_code = 200
 
         if chat_available:
@@ -767,6 +869,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 chat_available=chat_available,
                 service_status_message=service_status_message,
                 page_state=page_state,
+                repository=repository,
             ),
             status_code,
         )
@@ -963,6 +1066,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 client_id=client_id,
                 chat_session_id=next_chat_session_id,
             ),
+            repository=repository,
         )
         response = _render_chat_page_partial_response(
             page_context,

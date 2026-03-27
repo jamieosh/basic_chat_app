@@ -30,6 +30,7 @@ Current stage:
 - Keeps the harness contract ready for future tool experiments with normalized tool-call/tool-result events and an optional tool orchestration hook
 - Persists a stable harness key and optional harness version on each chat session
 - Persists explicit run identity and lifecycle status per accepted send via `chat_session_runs`, linked to turn requests
+- Exposes active-session inspectability metadata in the chat header (session identity/timestamps, runtime binding details, and latest run metadata)
 - Lets harness-owned context builders assemble model-facing prompt and transcript context from the persisted raw conversation record
 - Formats text/code-block output into HTML
 - Returns inline bot message HTML for HTMX insertion
@@ -82,8 +83,8 @@ Current stage:
 ## Planning And Branch Workflow
 
 - Phase planning lives under `plans/`.
-- The current active backlog is `plans/PHASE 3 BACKLOG.md`.
-- Shipped backlog items move to `plans/done/PHASE 3 DONE.md`.
+- The current active backlog is `plans/PHASE 4 BACKLOG.md`.
+- Shipped backlog items move to `plans/done/PHASE 4 DONE.md`.
 - Feature implementation plans should live at `plans/<slug>.md` on a matching `codex/<slug>` branch.
 - The local helper skills in `.agents/skills/` assume this workflow:
   - `phase-start`: open the next delivery phase by creating the matching `plans/PHASE X DESIGN.md` and `plans/PHASE X BACKLOG.md` after validating no earlier phase is still active
@@ -113,6 +114,7 @@ Current stage:
 - Follow-up sends append to the same persisted chat until the user starts a new chat or switches chats.
 - Duplicate request IDs replay the stored outcome instead of creating duplicate turns.
 - Turn requests now persist explicit run linkage and run status while preserving current route and HTMX behavior.
+- Active chat headers now expose inspectability metadata for the selected session, including session identity/timestamps, runtime binding/model/provider details, and latest run status when available.
 - The app layer now depends on normalized harness contracts, registry-backed harness resolution, and persisted chat binding rather than provider SDK exceptions or route-owned harness selection.
 - The control/service layer now owns normalized harness execution coordination, persisted failure finalization, and per-turn observability shaping so routes can stay focused on HTTP validation and rendering.
 - The default shipped runtime remains OpenAI-backed, but Anthropic is now available through backend configuration and provider-specific behavior and failure translation should stay inside harness adapter code.

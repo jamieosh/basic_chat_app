@@ -110,6 +110,44 @@ def _active_chat_header_html() -> str:
         <div class="chat-view-body">
             <div class="chat-view-primary">
                 <h2 class="chat-view-title">Chat 1</h2>
+                <dl class="chat-session-meta" aria-label="Session metadata">
+                    <div class="chat-session-meta-item">
+                        <dt>Session</dt>
+                        <dd>#1</dd>
+                    </div>
+                    <div class="chat-session-meta-item">
+                        <dt>Created</dt>
+                        <dd>Mar 14, 09:40 AM</dd>
+                    </div>
+                    <div class="chat-session-meta-item">
+                        <dt>Updated</dt>
+                        <dd>Mar 15, 11:12 AM</dd>
+                    </div>
+                    <div class="chat-session-meta-item">
+                        <dt>Runtime</dt>
+                        <dd>AI Chat</dd>
+                    </div>
+                    <div class="chat-session-meta-item">
+                        <dt>Binding</dt>
+                        <dd>openai</dd>
+                    </div>
+                    <div class="chat-session-meta-item">
+                        <dt>Model</dt>
+                        <dd>gpt-5-mini</dd>
+                    </div>
+                    <div class="chat-session-meta-item">
+                        <dt>Provider</dt>
+                        <dd>openai</dd>
+                    </div>
+                    <div class="chat-session-meta-item">
+                        <dt>Run</dt>
+                        <dd>#7 · chat_send · completed</dd>
+                    </div>
+                    <div class="chat-session-meta-item">
+                        <dt>Run Updated</dt>
+                        <dd>Mar 15, 11:12 AM</dd>
+                    </div>
+                </dl>
             </div>
             <div class="chat-view-actions">
                 <div class="chat-view-meta">Mar 15, 11:12 AM</div>
@@ -1249,9 +1287,7 @@ def test_desktop_chat_headers_share_aligned_rails(page: Page, live_server_url: s
     assert sidebar_box is not None
     assert header_box is not None
     assert abs(sidebar_box["y"] - header_box["y"]) <= 1
-    assert abs(
-        (sidebar_box["y"] + sidebar_box["height"]) - (header_box["y"] + header_box["height"])
-    ) <= 1
+    assert header_box["height"] >= sidebar_box["height"]
 
 
 def test_visual_mobile_active_chat_header(page: Page, live_server_url: str) -> None:

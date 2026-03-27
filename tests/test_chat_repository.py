@@ -497,6 +497,87 @@ def test_chat_repository_start_turn_persists_run_identity_link(tmp_path):
     assert completed_state.turn_request.run_id == completed_state.run.id
 
 
+def test_chat_repository_get_latest_run_for_chat_session_returns_none_when_no_runs_exist(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+
+    latest_run = repository.get_latest_run_for_chat_session(
+        chat_session_id=chat.id,
+        client_id="client-a",
+    )
+
+    assert latest_run is None
+
+
+def test_chat_repository_get_chat_session_inspectability_returns_latest_run(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+
+    first_turn = repository.start_turn_request(
+        client_id="client-a",
+        request_id="request-inspect-1",
+        chat_session_id=chat.id,
+        message="First",
+    )
+    assert first_turn.turn_request_state is not None
+    repository.finalize_turn_success(
+        client_id="client-a",
+        request_id="request-inspect-1",
+        assistant_content="Reply",
+    )
+    second_turn = repository.start_turn_request(
+        client_id="client-a",
+        request_id="request-inspect-2",
+        chat_session_id=chat.id,
+        message="Second",
+    )
+    assert second_turn.turn_request_state is not None
+    assert second_turn.turn_request_state.run is not None
+
+    inspectability = repository.get_chat_session_inspectability(
+        chat_session_id=chat.id,
+        client_id="client-a",
+    )
+
+    assert inspectability is not None
+    assert inspectability.chat_session.id == chat.id
+    assert inspectability.chat_session.harness_key == "openai"
+    assert inspectability.latest_run is not None
+    assert inspectability.latest_run.id == second_turn.turn_request_state.run.id
+    assert inspectability.latest_run.status == "processing"
+    assert inspectability.latest_run.run_kind == "chat_send"
+
+
+def test_chat_repository_get_chat_session_inspectability_hides_archived_chats(tmp_path):
+    db_path = tmp_path / "chat.db"
+    bootstrap_database(db_path)
+    repository = ChatRepository(db_path)
+    chat = repository.create_chat(client_id="client-a", title="Chat 1")
+    repository.start_turn_request(
+        client_id="client-a",
+        request_id="request-inspect-archived",
+        chat_session_id=chat.id,
+        message="Hidden",
+    )
+    assert repository.archive_chat(chat_session_id=chat.id, client_id="client-a") is True
+
+    inspectability = repository.get_chat_session_inspectability(
+        chat_session_id=chat.id,
+        client_id="client-a",
+    )
+    latest_run = repository.get_latest_run_for_chat_session(
+        chat_session_id=chat.id,
+        client_id="client-a",
+    )
+
+    assert inspectability is None
+    assert latest_run is not None
+
+
 def test_chat_repository_duplicate_turn_replay_does_not_create_extra_runs(tmp_path):
     db_path = tmp_path / "chat.db"
     bootstrap_database(db_path)
