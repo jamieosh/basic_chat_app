@@ -22,6 +22,61 @@
         <div class="chat-view-body">
             <div class="chat-view-primary">
                 <h2 class="chat-view-title text-lg font-bold text-gray-900 m-0">{{ selected_chat.title }}</h2>
+                {% if session_inspectability %}
+                    <dl class="chat-session-meta" aria-label="Session metadata">
+                        <div class="chat-session-meta-item">
+                            <dt>Session</dt>
+                            <dd>#{{ session_inspectability.session_id }}</dd>
+                        </div>
+                        <div class="chat-session-meta-item">
+                            <dt>Created</dt>
+                            <dd>{{ format_chat_timestamp(session_inspectability.created_at) }}</dd>
+                        </div>
+                        <div class="chat-session-meta-item">
+                            <dt>Updated</dt>
+                            <dd>{{ format_chat_timestamp(session_inspectability.updated_at) }}</dd>
+                        </div>
+                        <div class="chat-session-meta-item">
+                            <dt>Runtime</dt>
+                            <dd>{{ session_inspectability.runtime_display_name }}</dd>
+                        </div>
+                        <div class="chat-session-meta-item">
+                            <dt>Binding</dt>
+                            <dd>
+                                {{ session_inspectability.harness_key }}{% if session_inspectability.harness_version %}@{{ session_inspectability.harness_version }}{% endif %}
+                            </dd>
+                        </div>
+                        <div class="chat-session-meta-item">
+                            <dt>Model</dt>
+                            <dd>{{ session_inspectability.runtime_model_display_name }}</dd>
+                        </div>
+                        {% if session_inspectability.runtime_provider_name %}
+                            <div class="chat-session-meta-item">
+                                <dt>Provider</dt>
+                                <dd>{{ session_inspectability.runtime_provider_name }}</dd>
+                            </div>
+                        {% endif %}
+                        {% if session_inspectability.latest_run_id is not none %}
+                            <div class="chat-session-meta-item">
+                                <dt>Run</dt>
+                                <dd>
+                                    #{{ session_inspectability.latest_run_id }}
+                                    · {{ session_inspectability.latest_run_kind }}
+                                    · {{ session_inspectability.latest_run_status }}
+                                </dd>
+                            </div>
+                            <div class="chat-session-meta-item">
+                                <dt>Run Updated</dt>
+                                <dd>{{ format_chat_timestamp(session_inspectability.latest_run_updated_at) }}</dd>
+                            </div>
+                        {% else %}
+                            <div class="chat-session-meta-item">
+                                <dt>Run</dt>
+                                <dd>No runs yet</dd>
+                            </div>
+                        {% endif %}
+                    </dl>
+                {% endif %}
             </div>
             <div class="chat-view-actions">
                 <div class="chat-view-meta text-sm text-gray-500">{{ format_chat_timestamp(selected_chat.updated_at) }}</div>
