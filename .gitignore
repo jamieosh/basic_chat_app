@@ -23,3 +23,5 @@ data/
 
 # Virtual environments
 .venv
+
+.tmp_research
