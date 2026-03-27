@@ -1,6 +1,6 @@
 ---
 name: feature-build
-description: Use when the user wants to implement an existing `plans/<slug>.md` increment on its `codex/<slug>` branch, with targeted verification, honest plan updates, and incremental commits.
+description: Implement a planned feature from `plans/slug.md` on `codex/slug`. Use when the user asks to execute plan steps, add/update tests, run targeted checks, and make incremental commits; not for final merge/ship.
 ---
 
 # Feature Build
@@ -19,8 +19,8 @@ git status --short
 2. Require the current branch to be `codex/<slug>`. If it is `main` or does not start with `codex/`, stop and tell the user to switch branches or run `$feature-start`.
 3. Derive `<slug>` from the branch name and read `AGENTS.md` plus `plans/<slug>.md` in full before making changes.
 4. Respect unrelated dirty worktree files. Never revert user changes. If the requested implementation conflicts with unrelated edits in the same files, stop and ask the user how to proceed.
-5. Resume from the first unchecked implementation step. Do not redo completed steps.
-6. For each remaining implementation step:
+5. Resume from the first unchecked implementation step in `plans/<slug>.md`. Do not redo completed steps.
+6. For each remaining step:
    - Implement the step.
    - Update or add tests for the behavior changed by that step.
    - Run targeted checks for the affected area. Prefer the smallest useful command, for example:
@@ -33,7 +33,7 @@ uv run ruff check <touched paths>
 ```
 
    - Fix failures before moving on.
-   - Mark the completed implementation step in `plans/<slug>.md`.
+   - Mark the completed implementation step in `plans/<slug>.md` immediately after it is done.
    - Check off any acceptance criteria that are now fully satisfied.
    - Check off any completed test items or definition-of-done items that are now true.
    - Keep the plan honest; do not pre-check future work.

@@ -1,33 +1,54 @@
 ---
 name: feature-start
-description: Use when the user wants to plan a new feature in this repository without implementing it yet. This skill identifies the active backlog item, refines scope, inspects the relevant code and docs, creates a `codex/<slug>` branch, and writes `plans/<slug>.md`.
+description: Plan one feature increment without implementation. Use when the user asks to choose/scope the next backlog item, create `plans/slug.md`, and create or reuse `codex/slug`; not for coding or shipping.
 ---
 
 # Feature Start
 
-Use this skill for planning only. Do not write implementation code.
+Plan only. Do not write implementation code.
 
 ## Workflow
 
-1. Read `AGENTS.md`, `plans/PHASES.md`, and the active phase backlog before proposing scope.
-   - Prefer the highest-numbered backlog file that still has active items, which is currently `plans/PHASE 3 BACKLOG.md`.
-   - Also note the matching shipped-items file under `plans/done/` so the plan uses the repo's real phase names and paths.
-2. Pick the feature:
-   - If the user named a feature, match it against the backlog and resolve ambiguity before continuing.
-   - If no feature was named, present the top 5 active backlog items as a numbered menu and ask the user to choose one.
-3. Refine the scope for this increment and draft:
-   - Title
-   - Slug in kebab-case
-   - Source backlog item or phase slice
-   - Scope
-   - Non-goals
-   - Acceptance criteria
-   - Risks and assumptions
-4. If anything is unclear, ask one concise batched clarification question. Do not proceed until the user confirms the scope.
-5. Inspect `git status --short` before creating a branch.
-   - If the worktree is dirty in a way that could conflict with planning work, stop and ask the user how to proceed.
-   - Do not overwrite existing planning-doc changes that you did not make.
-6. Create the branch from `main`:
+1. Establish context first:
+
+```bash
+git branch --show-current
+git status --short
+ls plans
+```
+
+2. Read `AGENTS.md`, `plans/PHASES.md`, and the active phase backlog before proposing scope.
+   - Detect the active phase from the `(In Progress)` marker in `plans/PHASES.md`.
+   - If no phase is explicitly marked in progress, use the highest-numbered `plans/PHASE * BACKLOG.md` that still has unshipped items.
+   - Note the matching shipped-items file under `plans/done/`.
+
+3. Pick the feature:
+   - If the user named a feature, map it to a backlog item and resolve ambiguity before continuing.
+   - If no feature was named, present the top 5 backlog candidates as a numbered menu and ask the user to choose one.
+
+4. Refine the increment and draft:
+   - title
+   - slug (kebab-case)
+   - source backlog item
+   - scope
+   - non-goals
+   - acceptance criteria
+   - risks/assumptions
+
+5. If scope is ambiguous, ask one concise batched clarification question and wait for confirmation.
+
+6. Before branch work, inspect the worktree:
+
+```bash
+git status --short
+```
+
+   - Respect unrelated edits.
+   - If planning changes would conflict with existing edits in `plans/` or docs, stop and ask the user.
+
+7. Create or reuse the feature branch:
+   - If `codex/<slug>` already exists, switch to it.
+   - Otherwise:
 
 ```bash
 git switch main
@@ -35,9 +56,11 @@ git pull --ff-only
 git switch -c codex/<slug>
 ```
 
-7. Inspect the relevant code, tests, templates, configs, and contributor docs before finalizing the plan. Read files first; do not guess at interfaces.
-8. If inspection changes the scope or reveals new uncertainty, ask the user before finalizing the plan.
-9. Write `plans/<slug>.md` with this structure:
+8. Inspect relevant code/tests/docs before finalizing the plan. Read files first; do not assume interfaces.
+
+9. If inspection changes scope materially, ask the user before writing the plan.
+
+10. Write `plans/<slug>.md` using this structure:
 
 ```markdown
 # Feature: <title>
@@ -81,4 +104,6 @@ git switch -c codex/<slug>
 - [ ] `AGENTS.md` updated if architecture or contributor guidance changes
 ```
 
-10. Confirm the branch name and plan file path, then stop. Do not edit backlog, done, changelog, or implementation files in this skill. Tell the user to run `$feature-build` when ready.
+11. Confirm the branch and plan path, then stop.
+   - Do not edit backlog, done, changelog, or implementation files in this skill.
+   - Tell the user to run `$feature-build` when ready.

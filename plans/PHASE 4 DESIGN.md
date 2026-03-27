@@ -76,6 +76,15 @@ For developers and fork maintainers, the intended outcome is:
 - Let future compare, replay, and resume flows build on normalized harness execution rather than bypassing it.
 - Leave room for external or federated runtime shapes later without making them a Phase 4 dependency.
 
+## Phase 4 Invariants (Plain English)
+
+- Typed contracts and persisted lifecycle records remain the reliability baseline.
+- The persisted lifecycle record is the source of truth for run state.
+- Routes remain thin and provider-agnostic.
+- Service and persistence layers remain the authority for acceptance, idempotency, and finalization.
+- Harness internals may evolve, but they must still map to the same app-facing typed contract.
+- Phase 4 adds inspectability and workflow clarity without turning into a full control-plane buildout.
+
 ## Current State And Gaps
 
 The current shipped app already has the minimum technical foundation for a session-oriented phase:
@@ -129,6 +138,7 @@ Phase 4 should address those gaps without pretending the app already needs a ful
 - Forking should create a distinct session with visible lineage.
 - Replay should be able to create or extend work without mutating past transcript history invisibly.
 - Resume should mean continuing a known session or run state, not guessing based only on transcript text.
+- Replay and resume should record minimal run-intent markers so later run history is understandable.
 - Compare workflows may begin with simple branch lineage, run metadata, and runtime metadata before a large side-by-side UI.
 - Deliberate runtime comparison is in scope when it fits branch, replay, or compare workflows; ad hoc per-message runtime switching is not.
 
@@ -144,6 +154,15 @@ Phase 4 should address those gaps without pretending the app already needs a ful
 - Phase 4 should preserve the assumption that a session binds to a runtime, but not assume that every future runtime is native to this repository.
 - This phase does not need to implement external or federated runtime integration.
 - It should avoid persistence or service assumptions that would make such runtimes awkward later.
+
+### Explicitly Deferred To Phase 5
+
+- mature progressive tool disclosure policies
+- broad risky-action approval and audit workflows
+- telemetry-driven loops that promote generic tools into specialized tools at scale
+- full evaluator-style run gating and richer run-profile orchestration
+
+Phase 4 can prepare clean seams and minimal metadata for these areas, but should not attempt full maturity work here.
 
 ## Expected Architecture / Product Shape
 
@@ -192,6 +211,10 @@ Phase 4 should leave the repository in a state where later phases can add approv
 - deep integration with external runtime systems
 - a full streaming UI rollout
 - replacing the HTMX-first server-rendered posture
+- mature progressive tool disclosure and tool-policy engines
+- broad risky-action approval and audit workflows
+- telemetry-driven tool specialization as a full product loop
+- full evaluator-style gating or multi-profile orchestration as a baseline behavior
 
 ## Open Questions To Keep Visible
 

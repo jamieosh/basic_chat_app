@@ -2,6 +2,8 @@
 
 > **Goal:** This phase shifts the product from "multi-chat UI" toward a richer session-based workbench. The goal is to make `session`, `run`, and `transcript` distinct and useful concepts, while exposing the beginnings of workbench-style interaction without turning Phase 4 into a full control-plane or integration phase.
 
+> **Phase boundary reminder:** Phase 4 makes session and run concepts explicit and inspectable. It does not fully mature tool-policy engines, risky-action approval systems, or telemetry-driven tool specialization. Those are Phase 5 concerns.
+
 Items are ordered by priority. Each item gets a feature branch `codex/<kebab-slug>` and plan file `plans/<kebab-slug>.md` when work begins. Run `$feature-start` to pick the next item.
 
 ---
@@ -11,7 +13,7 @@ Items are ordered by priority. Each item gets a feature branch `codex/<kebab-slu
 **Size:** Medium  
 **Dependencies:** P4-01
 
-This item exposes stable session identity, agent identity, runtime binding, and other high-signal session metadata in the product so users can inspect what a session is and what it is bound to. It should also introduce the smallest useful session profile or context-policy surface, such as lightweight scope, notes, or reusable guidance metadata. It matters because the workbench posture depends on visible, inspectable state rather than backend-only assumptions. Out of scope for this item are lineage actions such as fork or replay and any heavy control-plane behavior.
+This item exposes stable session identity, agent identity, runtime binding, and other high-signal session metadata in the product so users can inspect what a session is and what it is bound to. It can show lightweight profile fields (such as scope, notes, or guidance) if they exist, but this item is primarily about read/inspect visibility rather than profile editing workflows. It matters because the workbench posture depends on visible, inspectable state rather than backend-only assumptions. Out of scope for this item are lineage actions such as fork or replay, profile/policy authoring UX, and any heavy control-plane behavior.
 
 **What the user will see:** Users should start seeing session-oriented metadata in the interface, such as clearer session, agent, runtime, or scope details, rather than only a chat title and transcript.
 
@@ -33,7 +35,7 @@ This item adds a deliberate fork or duplicate flow that creates a new session fr
 **Size:** Large  
 **Dependencies:** P4-01, P4-02
 
-This item introduces deliberate replay and resume-style workflows so users can continue work from an earlier point or prior run state without mutating history invisibly. It should establish the minimal useful distinction between normal conversational continuation and deliberate replay/compare-style runs. It may include narrow runtime-compare workflows where replay or branch semantics make that explicit, but not arbitrary per-message switching. It matters because the workbench needs intentional revisit behavior that is richer than simply appending another message to the same transcript. Out of scope for this item are autonomous retries, background orchestration, or a large approval system.
+This item introduces deliberate replay and resume-style workflows so users can continue work from an earlier point or prior run state without mutating history invisibly. It should establish the minimal useful distinction between normal conversational continuation and deliberate replay/compare-style runs, including minimal run-intent markers persisted per run. It may include narrow runtime-compare workflows where replay or branch semantics make that explicit, but not arbitrary per-message switching. It matters because the workbench needs intentional revisit behavior that is richer than simply appending another message to the same transcript. Out of scope for this item are autonomous retries, background orchestration, or a large approval system.
 
 **What the user will see:** Users should gain a clearer way to continue or revisit prior work intentionally, instead of relying only on manual transcript prompting.
 
@@ -44,7 +46,7 @@ This item introduces deliberate replay and resume-style workflows so users can c
 **Size:** Large  
 **Dependencies:** P4-01, P4-04
 
-This item introduces a cleaner model for inspectable run metadata beyond the current turn-request implementation details. It should make run identity, run history, and basic run intent visible enough to support concepts such as conversational sends, replay runs, compare runs, or resume-related runs without overdesigning a future workflow engine. It matters because later approvals, interrupts, resumability, and background execution all need durable run identity and history that are more explicit than the current send lifecycle storage. Out of scope for this item are full background workers, multi-agent scheduling, or a complete control-plane UI.
+This item deepens and normalizes the run model introduced in P4-04 so run identity, run history, and run intent are inspectable and consistent beyond the current turn-request implementation details. It should make conversational sends, replay runs, compare runs, and resume-related runs easier to reason about without overdesigning a future workflow engine. It matters because later approvals, interrupts, resumability, and background execution all need durable run identity and history that are more explicit than the current send lifecycle storage. Out of scope for this item are full background workers, multi-agent scheduling, or a complete control-plane UI.
 
 **What the user will see:** Some session or run details may become easier to inspect, but the main value is a stronger internal model for later control-plane features.
 
@@ -66,7 +68,7 @@ This item adds a narrow session-adjacent record type for outputs that should not
 **Size:** Medium  
 **Dependencies:** P4-01, P4-02
 
-This item adds the smallest useful session-level profile, scope, or context-policy concept that helps the workbench model without turning the app into a file-management system or a full user-profile system. It matters because later personal-agent and small-team phases need a cleaner way to describe what a session is for beyond its title and transcript, and where shared guidance such as standards or reusable session instructions might eventually live. Out of scope for this item are full workspace containers, broad filesystem integration, durable user identity, or a general project-management layer.
+This item adds the smallest useful session-level profile, scope, or context-policy authoring/editing concept that helps the workbench model without turning the app into a file-management system or a full user-profile system. It owns create/edit behavior for profile-style fields that P4-02 only exposes for inspectability. It matters because later personal-agent and small-team phases need a cleaner way to describe what a session is for beyond its title and transcript, and where shared guidance such as standards or reusable session instructions might eventually live. Out of scope for this item are full workspace containers, broad filesystem integration, durable user identity, or a general project-management layer.
 
 **What the user will see:** Users should be able to give sessions a clearer sense of scope, profile, or guidance context, but without a major shift in the app’s simple chat-first posture.
 
@@ -80,3 +82,5 @@ Items considered for this phase but intentionally pushed out. Move to `plans/PAR
 - **Archive browsing and deleted-chat recovery workflows**: Still relevant UX gaps, but they do not advance the core Phase 4 session model as directly as lineage, replay, and inspectability work.
 - **Deep external-runtime integration**: The Phase 4 model should remain open to external or federated runtimes later, but proving that integration is not required for this phase.
 - **Arbitrary user-facing runtime switching inside a live transcript**: Better deferred until the session model and run records are more explicit, so runtime choice does not leak back into ad hoc UI behavior.
+- **Mature tool-policy engines and broad approval workflows**: Phase 4 should define clean seams and metadata only where needed; full policy maturity belongs to Phase 5.
+- **Telemetry-driven tool specialization loops**: Useful direction, but this should mature in Phase 5 once control-plane and tool-policy foundations are explicit.

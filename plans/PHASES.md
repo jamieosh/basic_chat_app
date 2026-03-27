@@ -4,6 +4,8 @@ The phase model now reflects a broader shift from "chat app with an agent backen
 
 Completed phases are retained as historical milestones. Future phases are reframed around runtime separation, richer session-and-run concepts, multi-agent personal use, and optional connection to external runtime systems.
 
+Across every phase, one rule stays constant: typed contracts plus persisted run lifecycle records remain the reliability baseline and source of truth.
+
 --
 
 ### 1. Reliable Single-Chat Baseline (Completed)
@@ -85,12 +87,16 @@ This phase should introduce or mature concepts such as:
 - artifacts, outputs, and other session-adjacent records where useful
 - lightweight scope, profile, or context-policy metadata where it supports the workbench model cleanly
 - terminology and persistence that stop treating a chat transcript as the whole durable object
+- a small run-intent vocabulary that distinguishes normal continuation from replay, compare, or resume actions
+- early run metadata needed for future evaluator-style quality checks, without requiring full multi-agent orchestration yet
 
 This is also the phase where the project should stay open to more than one runtime shape.
 
 That does not mean full external-runtime integration must land in Phase 4. It does mean the session and run model should not assume that every execution always comes from a native runtime implemented inside this repository.
 
 The emphasis is still product clarity, not feature sprawl.
+
+Phase 4 is about making session and run concepts explicit and inspectable. It is not the phase where we fully mature tool policy engines, approval workflows, or broad runtime orchestration.
 
 --
 
@@ -109,6 +115,10 @@ This phase should focus on:
 - better visibility into what each agent is doing and why
 - destination-style surfaces beyond plain chat where useful, such as review queues, approvals, task outcomes, or scheduled outputs
 - agent definitions as clearer first-class concepts, including behavior packages built from prompts, skills, tools, delegation rules, and context policy
+- progressive tool disclosure so models get only the tools they need by default
+- explicit approval and audit policy seams for risky tool actions
+- run-time tool telemetry as input for deciding when generic tools should become specialized tools
+- maturing optional run profiles and evaluator-style run gating where they provide measurable quality lift
 
 This is the phase where the project should start to feel like a true workbench rather than only a chat UI.
 
@@ -169,5 +179,7 @@ That means:
 - strong tests around core lifecycle behavior
 - contributor guidance that stays aligned with the architecture
 - preserving a coherent user experience even when runtimes differ underneath
+- keeping typed contracts and persisted lifecycle state authoritative even when runtime internals vary
+- running periodic harness audits after major model upgrades and removing non-load-bearing complexity
 
 This is an ongoing engineering standard across every phase, not a separate product phase.

@@ -1,6 +1,6 @@
 ---
 name: feature-ship
-description: Use when the user wants to finish a completed `codex/<slug>` feature branch by updating project docs and backlog records, running full verification, merging to `main`, pushing, and cleaning up the branch safely.
+description: Ship a completed `codex/slug` feature branch. Use when the user asks to finalize changelog/backlog docs, run full gates, merge into `main`, push, and clean up local/remote feature branches.
 ---
 
 # Feature Ship
@@ -22,14 +22,15 @@ git status --short
    - All acceptance criteria are checked off
    - The feature is actually complete
    If any of these fail, stop.
-4. Determine the documentation targets before editing:
+4. Determine documentation targets dynamically before editing:
    - `CHANGELOG.md`
-   - the matching active backlog file such as `plans/PHASE 3 BACKLOG.md`
-   - the matching shipped-items file such as `plans/done/PHASE 3 DONE.md`
+   - the active phase backlog file (`plans/PHASE * BACKLOG.md`)
+   - the matching shipped-items file in `plans/done/`
    - `README.md` and `AGENTS.md` when contributor-facing behavior or architecture changed
 5. If any of those target files already contain unrelated user edits, stop rather than risking a bad merge of planning or changelog content.
 6. Update `CHANGELOG.md` in the repository's existing format:
-   - Reuse the current top-level `## YYYY-MM-DD` heading if it already matches today's date.
+   - Resolve today's date with `date +%F`.
+   - Reuse the current top-level `## YYYY-MM-DD` heading if it already matches that date.
    - Otherwise add a new top-level date heading at the top.
    - Add a `### <Feature title>` subsection summarizing the shipped behavior in human-readable terms.
    - Mention the most significant files or commands changed.

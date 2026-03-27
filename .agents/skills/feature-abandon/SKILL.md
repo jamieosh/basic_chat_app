@@ -1,6 +1,6 @@
 ---
 name: feature-abandon
-description: Use when the user wants to safely abandon a `codex/<slug>` branch in this repository after reviewing unmerged commits, uncommitted changes, any matching remote branch, and the optional `plans/<slug>.md` file.
+description: Safely abandon an in-progress `codex/slug` branch. Use when the user asks to cancel/drop a feature branch after reviewing unmerged commits and local changes, with optional remote branch and `plans/slug.md` cleanup.
 ---
 
 # Feature Abandon
@@ -18,7 +18,7 @@ git status --short
 ```
 
 2. Require the current branch to be `codex/<slug>`. If it is `main` or does not start with `codex/`, stop and report that there is no active feature branch to abandon.
-3. Check whether `plans/<slug>.md` exists and whether a same-name remote branch exists on `fork` or `origin`.
+3. Check whether `plans/<slug>.md` exists and whether a same-name remote branch exists on `fork` or `origin` (prefer `fork` when both exist).
 4. Show the user:
    - The branch name
    - The unmerged commits
@@ -35,9 +35,7 @@ git pull --ff-only
 git branch -D codex/<slug>
 ```
 
-8. Ask whether to delete the remote branch too:
-   - Prefer `fork` if that remote exists
-   - Otherwise offer `origin`
+8. Ask whether to delete the remote branch too (`fork` first, otherwise `origin`).
 9. If the user agrees, delete the remote branch:
 
 ```bash
