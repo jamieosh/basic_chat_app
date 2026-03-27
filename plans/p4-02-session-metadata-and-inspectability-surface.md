@@ -38,13 +38,13 @@ The current schema does not yet include editable profile fields (scope/notes/gui
 - [x] `test_chat_smoke.py`: visual/assertion coverage for active header metadata on desktop/mobile shells -> covers AC: 1, 2, 4
 
 ## Definition of Done
-- [ ] All acceptance criteria checked off
-- [ ] All new or updated tests pass
-- [ ] `uv run ruff check .` passes
-- [ ] `uv run mypy .` passes
-- [ ] `uv run python -m pytest` passes
-- [ ] `README.md` updated if user-visible behavior changed
-- [ ] E2E or visual checks run when UI behavior changes materially
+- [x] All acceptance criteria checked off
+- [x] All new or updated tests pass
+- [x] `uv run ruff check .` passes
+- [x] `uv run mypy .` passes
+- [x] `uv run python -m pytest` passes
+- [x] `README.md` updated if user-visible behavior changed
+- [x] E2E or visual checks run when UI behavior changes materially
 - [ ] `CHANGELOG.md` updated when the feature ships
 - [ ] Matching phase backlog and `plans/done/PHASE X DONE.md` updated when the feature ships
 - [ ] `AGENTS.md` updated if architecture or contributor guidance changes

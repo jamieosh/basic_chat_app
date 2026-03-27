@@ -26,6 +26,7 @@ This README focuses on project scope, current behavior, setup, and contributor w
 - `New chat` start screen plus chat restoration through route-backed URLs.
 - In-flight request locking plus persisted request IDs so duplicate submissions are replayed instead of being processed twice.
 - Persisted run-identity groundwork for each accepted send (`chat_session_runs` + turn-request linkage) while keeping the existing chat-first HTMX UX unchanged.
+- Active-chat session inspectability metadata in the header (session identity/timestamps, runtime binding details, and latest run metadata) with consistent full-page and HTMX partial rendering.
 - Lightweight loading feedback while switching chats.
 - Inline failure handling for validation, service-unavailable, and transport-error states.
 - OpenAI-backed default harness adapter plus a shipped Anthropic proof adapter, both resolved through the normalized event-capable `ChatHarness` surface, with `run_events()` canonical and `run()` acting as the non-streaming collector.
