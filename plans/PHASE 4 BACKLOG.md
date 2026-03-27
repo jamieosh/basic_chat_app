@@ -8,17 +8,6 @@ Items are ordered by priority. Each item gets a feature branch `codex/<kebab-slu
 
 ---
 
-## P4-02 — Session Metadata And Inspectability Surface
-
-**Size:** Medium  
-**Dependencies:** P4-01
-
-This item exposes stable session identity, agent identity, runtime binding, and other high-signal session metadata in the product so users can inspect what a session is and what it is bound to. It can show lightweight profile fields (such as scope, notes, or guidance) if they exist, but this item is primarily about read/inspect visibility rather than profile editing workflows. It matters because the workbench posture depends on visible, inspectable state rather than backend-only assumptions. Out of scope for this item are lineage actions such as fork or replay, profile/policy authoring UX, and any heavy control-plane behavior.
-
-**What the user will see:** Users should start seeing session-oriented metadata in the interface, such as clearer session, agent, runtime, or scope details, rather than only a chat title and transcript.
-
----
-
 ## P4-03 — Session Lineage And Fork Workflow
 
 **Size:** Medium  
