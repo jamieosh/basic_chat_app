@@ -48,6 +48,12 @@ class ChatSessionRun:
 
 
 @dataclass(frozen=True)
+class ChatSessionInspectability:
+    chat_session: ChatSession
+    latest_run: ChatSessionRun | None
+
+
+@dataclass(frozen=True)
 class ChatTurnRequest:
     id: int
     client_id: str
@@ -184,6 +190,46 @@ class ChatRepository:
                 (chat_session_id, client_id),
             ).fetchone()
             return None if row is None else _row_to_chat_session(row)
+
+    def get_latest_run_for_chat_session(
+        self,
+        *,
+        chat_session_id: int,
+        client_id: str,
+    ) -> ChatSessionRun | None:
+        with closing(connect_database(self._db_path)) as connection:
+            row = _load_latest_run_row_for_chat(
+                connection,
+                chat_session_id=chat_session_id,
+                client_id=client_id,
+            )
+            return None if row is None else _row_to_chat_session_run(row)
+
+    def get_chat_session_inspectability(
+        self,
+        *,
+        chat_session_id: int,
+        client_id: str,
+    ) -> ChatSessionInspectability | None:
+        with closing(connect_database(self._db_path)) as connection:
+            chat_row = _load_active_chat_row(
+                connection,
+                chat_session_id=chat_session_id,
+                client_id=client_id,
+            )
+            if chat_row is None:
+                return None
+            latest_run_row = _load_latest_run_row_for_chat(
+                connection,
+                chat_session_id=chat_session_id,
+                client_id=client_id,
+            )
+            return ChatSessionInspectability(
+                chat_session=_row_to_chat_session(chat_row),
+                latest_run=(
+                    None if latest_run_row is None else _row_to_chat_session_run(latest_run_row)
+                ),
+            )
 
     def list_visible_chats(self, *, client_id: str) -> list[ChatSession]:
         with closing(connect_database(self._db_path)) as connection:
@@ -777,6 +823,24 @@ def _load_run_row(connection: sqlite3.Connection, *, run_id: int | None) -> sqli
         WHERE id = ?
         """,
         (run_id,),
+    ).fetchone()
+
+
+def _load_latest_run_row_for_chat(
+    connection: sqlite3.Connection,
+    *,
+    chat_session_id: int,
+    client_id: str,
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT *
+        FROM chat_session_runs
+        WHERE chat_session_id = ? AND client_id = ?
+        ORDER BY updated_at DESC, id DESC
+        LIMIT 1
+        """,
+        (chat_session_id, client_id),
     ).fetchone()
 
 
